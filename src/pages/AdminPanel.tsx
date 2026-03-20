@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { Shield, Plus, MapPin, FileText, Check, X, Download, Eye, BarChart3, Globe, ChevronDown, Paperclip, Pencil, Trash2, ArrowLeft, Users, Search, Target, TrendingDown, Calendar } from 'lucide-react';
+import { Shield, Plus, MapPin, FileText, Check, X, Download, Eye, BarChart3, Globe, ChevronDown, Paperclip, Pencil, Trash2, ArrowLeft, Users, Search, Target, TrendingDown, Calendar, Bell, Clock } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { exportApplicationPdf, exportApplicationsListPdf } from '@/lib/exportPdf';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,10 +26,44 @@ type Zone = Database['public']['Tables']['zones']['Row'];
 type Territory = Database['public']['Tables']['territories']['Row'] & { zones?: { name: string } | null };
 type Application = Database['public']['Tables']['applications']['Row'] & { territories?: { name: string } | null; zones?: { name: string } | null };
 type Attachment = Database['public']['Tables']['application_attachments']['Row'];
+type Notification = Database['public']['Tables']['notifications']['Row'] & { applications?: { trading_name: string } | null };
 
 export default function AdminPanel() {
   const { role } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Notifications
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*, applications(trading_name)')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      return (data ?? []) as Notification[];
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const markAsRead = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const markAllAsRead = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('notifications').update({ read: true }).eq('read', false);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
 
   if (role !== 'admin') {
     return (
@@ -39,16 +75,106 @@ export default function AdminPanel() {
     );
   }
 
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'new_application': return <FileText className="h-4 w-4 text-blue-500" />;
+      case 'approved': return <Check className="h-4 w-4 text-green-500" />;
+      case 'rejected': return <X className="h-4 w-4 text-red-500" />;
+      case 'in_progress': return <Clock className="h-4 w-4 text-amber-500" />;
+      default: return <Bell className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  const formatTimeAgo = (date: string) => {
+    const now = new Date();
+    const then = new Date(date);
+    const diffMs = now.getTime() - then.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-8 w-8">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="h-10 w-10 rounded-lg gradient-primary flex items-center justify-center">
-          <Shield className="h-5 w-5 text-primary-foreground" />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-8 w-8">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="h-10 w-10 rounded-lg gradient-primary flex items-center justify-center">
+            <Shield className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <h1 className="text-xl font-display font-bold text-foreground">Admin Panel</h1>
         </div>
-        <h1 className="text-xl font-display font-bold text-foreground">Admin Panel</h1>
+
+        {/* Notifications Bell */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="relative">
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center font-medium">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 p-0" align="end">
+            <div className="flex items-center justify-between p-3 border-b">
+              <h4 className="font-semibold text-sm">Notifications</h4>
+              {unreadCount > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs h-7"
+                  onClick={() => markAllAsRead.mutate()}
+                >
+                  Mark all as read
+                </Button>
+              )}
+            </div>
+            <ScrollArea className="h-[300px]">
+              {notifications.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  No notifications
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-3 hover:bg-muted/50 cursor-pointer transition-colors ${!notification.read ? 'bg-primary/5' : ''}`}
+                      onClick={() => !notification.read && markAsRead.mutate(notification.id)}
+                    >
+                      <div className="flex gap-3">
+                        <div className="mt-0.5">{getNotificationIcon(notification.type)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${!notification.read ? 'font-medium' : ''}`}>
+                            {notification.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatTimeAgo(notification.created_at)}
+                          </p>
+                        </div>
+                        {!notification.read && (
+                          <div className="h-2 w-2 rounded-full bg-primary mt-1.5" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-4">
@@ -96,6 +222,7 @@ function AdminDashboard() {
   const approved = apps.filter(a => a.status === 'approved').length;
   const rejected = apps.filter(a => a.status === 'rejected').length;
   const pending = apps.filter(a => a.status === 'pending').length;
+  const inProgress = apps.filter(a => a.status === 'in_progress').length;
 
   // Calculate current month (1-12) for MTD
   const currentMonth = new Date().getMonth() + 1; // January = 1
@@ -130,11 +257,12 @@ function AdminDashboard() {
   return (
     <div className="space-y-4">
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard title="Total" value={total} icon={FileText} color="primary" />
+        <StatCard title="Pending" value={pending} icon={BarChart3} color="accent" />
+        <StatCard title="In Progress" value={inProgress} icon={Clock} color="primary" />
         <StatCard title="Approved" value={approved} icon={Check} color="success" />
         <StatCard title="Rejected" value={rejected} icon={X} color="destructive" />
-        <StatCard title="Pending" value={pending} icon={BarChart3} color="accent" />
       </div>
 
       {/* Year Target Summary */}
@@ -334,12 +462,14 @@ function ApplicationsList() {
     );
   };
 
-  const pendingSelected = selectedIds.filter((id) => 
-    apps.find((a) => a.id === id)?.status === 'pending'
-  );
+  const actionableSelected = selectedIds.filter((id) => {
+    const status = apps.find((a) => a.id === id)?.status;
+    return status === 'pending' || status === 'in_progress';
+  });
 
   const statusColors: Record<string, string> = {
     pending: 'bg-warning/10 text-warning border-warning/20',
+    in_progress: 'bg-blue-100 text-blue-700 border-blue-200',
     approved: 'bg-success/10 text-success border-success/20',
     rejected: 'bg-destructive/10 text-destructive border-destructive/20',
   };
@@ -365,6 +495,7 @@ function ApplicationsList() {
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
             </SelectContent>
@@ -395,25 +526,25 @@ function ApplicationsList() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {pendingSelected.length > 0 && (
+          {actionableSelected.length > 0 && (
             <>
               <Button
                 size="sm"
                 variant="outline"
                 className="gap-1"
-                onClick={() => bulkUpdateApps.mutate({ ids: pendingSelected, status: 'approved' })}
+                onClick={() => bulkUpdateApps.mutate({ ids: actionableSelected, status: 'approved' })}
                 disabled={bulkUpdateApps.isPending}
               >
-                <Check className="h-3 w-3" /> Approve ({pendingSelected.length})
+                <Check className="h-3 w-3" /> Approve ({actionableSelected.length})
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="gap-1 text-destructive"
-                onClick={() => bulkUpdateApps.mutate({ ids: pendingSelected, status: 'rejected' })}
+                onClick={() => bulkUpdateApps.mutate({ ids: actionableSelected, status: 'rejected' })}
                 disabled={bulkUpdateApps.isPending}
               >
-                <X className="h-3 w-3" /> Reject ({pendingSelected.length})
+                <X className="h-3 w-3" /> Reject ({actionableSelected.length})
               </Button>
             </>
           )}
@@ -460,7 +591,7 @@ function ApplicationsList() {
                 <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => handleExportSingle(app)}>
                   <Download className="h-3 w-3" /> PDF
                 </Button>
-                {app.status === 'pending' && (
+                {(app.status === 'pending' || app.status === 'in_progress') && (
                   <>
                     <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => updateApp.mutate({ id: app.id, status: 'approved' })}>
                       <Check className="h-3 w-3" /> Approve
@@ -492,6 +623,9 @@ function ApplicationsList() {
 }
 
 function ApplicationDetailDialog({ app, onClose }: { app: Application; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  
   const { data: attachments = [] } = useQuery({
     queryKey: ['attachments', app.id],
     queryFn: async () => {
@@ -499,6 +633,30 @@ function ApplicationDetailDialog({ app, onClose }: { app: Application; onClose: 
       return data ?? [];
     },
   });
+
+  // Auto-change status to 'in_progress' when viewing a pending application
+  useEffect(() => {
+    const updateStatusToInProgress = async () => {
+      if (app.status === 'pending') {
+        const { error } = await supabase
+          .from('applications')
+          .update({ 
+            status: 'in_progress',
+            reviewed_by: user?.id,
+            reviewed_at: new Date().toISOString()
+          })
+          .eq('id', app.id);
+        
+        if (!error) {
+          queryClient.invalidateQueries({ queryKey: ['admin-applications-full'] });
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          toast.info('Application status changed to "In Progress"');
+        }
+      }
+    };
+    
+    updateStatusToInProgress();
+  }, [app.id, app.status, user?.id, queryClient]);
 
   const getFileUrl = (path: string) => {
     const { data } = supabase.storage.from('application-attachments').getPublicUrl(path);

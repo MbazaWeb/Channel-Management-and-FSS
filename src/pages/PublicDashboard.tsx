@@ -72,6 +72,7 @@ export default function PublicDashboard() {
   const approved = apps.filter(a => a.status === 'approved').length;
   const rejected = apps.filter(a => a.status === 'rejected').length;
   const pending = apps.filter(a => a.status === 'pending').length;
+  const inProgress = apps.filter(a => a.status === 'in_progress').length;
   
   // FSS User statistics
   const fssTotal = apps.filter(a => a.fss_user === true).length;
@@ -130,6 +131,7 @@ export default function PublicDashboard() {
   // Status distribution for pie chart
   const statusData = [
     { name: 'Approved', value: approved },
+    { name: 'In Progress', value: inProgress },
     { name: 'Pending', value: pending },
     { name: 'Rejected', value: rejected },
   ].filter(item => item.value > 0);

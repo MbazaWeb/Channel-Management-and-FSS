@@ -89,6 +89,7 @@ export default function ApplicationForm() {
   const [idFiles, setIdFiles] = useState<File[]>([]);
   const [tinFiles, setTinFiles] = useState<File[]>([]);
   const [otherFiles, setOtherFiles] = useState<File[]>([]);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     // Business Details
     trading_name: '',
@@ -118,6 +119,7 @@ export default function ApplicationForm() {
     district: '',
     ward: '',
     street: '',
+    postal_code: '',
     zone_id: '',
     territory_id: '',
     
@@ -184,7 +186,7 @@ export default function ApplicationForm() {
     }
   };
 
-  const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'id' | 'tin' | 'other') => {
+  const handleFileAdd = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'id' | 'tin' | 'other' | 'photo') => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       switch (fileType) {
@@ -197,11 +199,14 @@ export default function ApplicationForm() {
         case 'other':
           setOtherFiles(prev => [...prev, ...newFiles]);
           break;
+        case 'photo':
+          setPhotoFiles(prev => [...prev, ...newFiles]);
+          break;
       }
     }
   };
 
-  const removeFile = (fileType: 'id' | 'tin' | 'other', idx: number) => {
+  const removeFile = (fileType: 'id' | 'tin' | 'other' | 'photo', idx: number) => {
     switch (fileType) {
       case 'id':
         setIdFiles(prev => prev.filter((_, i) => i !== idx));
@@ -211,6 +216,9 @@ export default function ApplicationForm() {
         break;
       case 'other':
         setOtherFiles(prev => prev.filter((_, i) => i !== idx));
+        break;
+      case 'photo':
+        setPhotoFiles(prev => prev.filter((_, i) => i !== idx));
         break;
     }
   };
@@ -366,6 +374,26 @@ export default function ApplicationForm() {
       if (otherFiles.length > 0 && appData) {
         for (const file of otherFiles) {
           const filePath = `${appData.id}/other/${Date.now()}_${file.name}`;
+          const { error: uploadErr } = await supabase.storage
+            .from('application-attachments')
+            .upload(filePath, file);
+          
+          if (!uploadErr) {
+            await supabase.from('application_attachments').insert({
+              application_id: appData.id,
+              file_name: file.name,
+              file_path: filePath,
+              file_type: file.type,
+              uploaded_by: user.id,
+            });
+          }
+        }
+      }
+
+      // Upload attachments - Outlet/Office Photos
+      if (photoFiles.length > 0 && appData) {
+        for (const file of photoFiles) {
+          const filePath = `${appData.id}/photo/${Date.now()}_${file.name}`;
           const { error: uploadErr } = await supabase.storage
             .from('application-attachments')
             .upload(filePath, file);
@@ -679,6 +707,14 @@ export default function ApplicationForm() {
                     placeholder="Enter street or village name"
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Postal Code</Label>
+                  <Input 
+                    value={form.postal_code} 
+                    onChange={e => update('postal_code', e.target.value)} 
+                    placeholder="Enter postal code"
+                  />
+                </div>
               </div>
 
               <Separator className="my-4" />
@@ -905,6 +941,29 @@ export default function ApplicationForm() {
                         <div key={i} className="flex items-center justify-between p-2 bg-muted rounded-lg text-sm">
                           <span className="truncate flex-1">{f.name}</span>
                           <button onClick={() => removeFile('other', i)} className="text-destructive ml-2" title="Remove file" aria-label="Remove file">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Outlet/Office Photo Upload */}
+                <div className="space-y-1.5">
+                  <Label>4. Upload Outlet/Office Photos</Label>
+                  <label className="flex flex-col items-center gap-2 p-4 border-2 border-dashed border-muted-foreground/30 rounded-xl cursor-pointer hover:border-primary/50 transition-colors">
+                    <Upload className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Click to upload outlet/office photos</span>
+                    <span className="text-xs text-muted-foreground">(Add multiple photos if available)</span>
+                    <input type="file" multiple onChange={e => handleFileAdd(e, 'photo')} className="hidden" accept=".jpg,.jpeg,.png,.heic,.webp" />
+                  </label>
+                  {photoFiles.length > 0 && (
+                    <div className="space-y-1 mt-2">
+                      {photoFiles.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-muted rounded-lg text-sm">
+                          <span className="truncate flex-1">{f.name}</span>
+                          <button onClick={() => removeFile('photo', i)} className="text-destructive ml-2" title="Remove file" aria-label="Remove file">
                             <X className="h-4 w-4" />
                           </button>
                         </div>

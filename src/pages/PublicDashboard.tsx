@@ -1,8 +1,9 @@
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TerritoryLeaderboard } from '@/components/dashboard/TerritoryLeaderboard';
-import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus, Calendar } from 'lucide-react';
 import {
   Tooltip,
   ResponsiveContainer,
@@ -14,6 +15,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
 import type { Database } from '@/integrations/supabase/types';
 
 type Zone = Database['public']['Tables']['zones']['Row'];
@@ -67,17 +73,63 @@ export default function PublicDashboard() {
     },
   });
 
-  // Calculate statistics
-  const total = apps.length;
-  const approved = apps.filter(a => a.status === 'approved').length;
-  const rejected = apps.filter(a => a.status === 'rejected').length;
-  const pending = apps.filter(a => a.status === 'pending').length;
-  const inProgress = apps.filter(a => a.status === 'in_progress').length;
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>('ytd');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+
+  // Calculate date ranges
+  const getDateRange = (filter: string): { start: Date; end: Date } => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    switch (filter) {
+      case 'this_month': {
+        const start = new Date(currentYear, currentMonth, 1);
+        const end = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+        return { start, end };
+      }
+      case 'last_month': {
+        const start = new Date(currentYear, currentMonth - 1, 1);
+        const end = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+        return { start, end };
+      }
+      case 'ytd': {
+        const start = new Date(currentYear, 0, 1);
+        const end = now;
+        return { start, end };
+      }
+      case 'custom': {
+        const start = customStartDate ? new Date(customStartDate) : new Date(currentYear, 0, 1);
+        const end = customEndDate ? new Date(customEndDate + 'T23:59:59') : now;
+        return { start, end };
+      }
+      default:
+        return { start: new Date(currentYear, 0, 1), end: now };
+    }
+  };
+
+  // Filter apps by date
+  const filteredApps = useMemo(() => {
+    const { start, end } = getDateRange(dateFilter);
+    return apps.filter(app => {
+      const appDate = new Date(app.created_at);
+      return appDate >= start && appDate <= end;
+    });
+  }, [apps, dateFilter, customStartDate, customEndDate]);
+
+  // Calculate statistics using filtered apps
+  const total = filteredApps.length;
+  const approved = filteredApps.filter(a => a.status === 'approved').length;
+  const rejected = filteredApps.filter(a => a.status === 'rejected').length;
+  const pending = filteredApps.filter(a => a.status === 'pending').length;
+  const inProgress = filteredApps.filter(a => a.status === 'in_progress').length;
   
   // FSS User statistics
-  const fssTotal = apps.filter(a => a.fss_user === true).length;
-  const fssActive = apps.filter(a => a.fss_user === true && a.status === 'approved').length;
-  const fssInactive = apps.filter(a => a.status === 'approved' && a.fss_user !== true).length;
+  const fssTotal = filteredApps.filter(a => a.fss_user === true).length;
+  const fssActive = filteredApps.filter(a => a.fss_user === true && a.status === 'approved').length;
+  const fssInactive = filteredApps.filter(a => a.status === 'approved' && a.fss_user !== true).length;
   
   const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
   const rejectionRate = total > 0 ? Math.round((rejected / total) * 100) : 0;
@@ -85,7 +137,7 @@ export default function PublicDashboard() {
   // Territory data with performance metrics
   const territoryData: TerritoryData[] = territories
     .map((t) => {
-      const actual = apps.filter(a => a.territory_id === t.id && a.status === 'approved').length;
+      const actual = filteredApps.filter(a => a.territory_id === t.id && a.status === 'approved').length;
       const target = t.monthly_target || 0;
       const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
       
@@ -97,8 +149,8 @@ export default function PublicDashboard() {
         target,
         actual,
         achievement,
-        pending: apps.filter(a => a.territory_id === t.id && a.status === 'pending').length,
-        total: apps.filter(a => a.territory_id === t.id).length,
+        pending: filteredApps.filter(a => a.territory_id === t.id && a.status === 'pending').length,
+        total: filteredApps.filter(a => a.territory_id === t.id).length,
       };
     })
     .filter(t => t.target > 0 || t.actual > 0 || t.pending > 0);
@@ -146,9 +198,60 @@ export default function PublicDashboard() {
             Sales Channel Partner Performance Overview
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <TrendingUp className="h-4 w-4" />
-          <span>Last updated: {new Date().toLocaleDateString()}</span>
+        <div className="flex items-center gap-3">
+          {/* Date Filter */}
+          <div className="flex items-center gap-2">
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-[160px]">
+                <Calendar className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Select period" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="this_month">This Month</SelectItem>
+                <SelectItem value="last_month">Last Month</SelectItem>
+                <SelectItem value="ytd">Year to Date</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {dateFilter === 'custom' && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {customStartDate && customEndDate 
+                      ? `${customStartDate} - ${customEndDate}`
+                      : 'Set dates'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Start Date</Label>
+                      <Input 
+                        type="date" 
+                        value={customStartDate} 
+                        onChange={(e) => setCustomStartDate(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>End Date</Label>
+                      <Input 
+                        type="date" 
+                        value={customEndDate} 
+                        onChange={(e) => setCustomEndDate(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <TrendingUp className="h-4 w-4" />
+            <span>Last updated: {new Date().toLocaleDateString()}</span>
+          </div>
         </div>
       </div>
 

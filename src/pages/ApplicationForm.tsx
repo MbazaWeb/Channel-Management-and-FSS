@@ -11,8 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { FileText, ChevronLeft, ChevronRight, Upload, X, Check, PenTool, Shield, ArrowLeft } from 'lucide-react';
+import { FileText, ChevronLeft, ChevronRight, Upload, X, Check, PenTool, Shield, ArrowLeft, BookOpen } from 'lucide-react';
 import SignatureCanvas from 'react-signature-canvas';
 
 // Business positions for dropdown
@@ -90,6 +92,15 @@ export default function ApplicationForm() {
   const [tinFiles, setTinFiles] = useState<File[]>([]);
   const [otherFiles, setOtherFiles] = useState<File[]>([]);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  
+  // Policy acceptance states
+  const [conflictPolicyOpen, setConflictPolicyOpen] = useState(false);
+  const [conflictPolicyAccepted, setConflictPolicyAccepted] = useState(false);
+  const [termsPolicyOpen, setTermsPolicyOpen] = useState(false);
+  const [termsPolicyAccepted, setTermsPolicyAccepted] = useState(false);
+  const [signaturePolicyOpen, setSignaturePolicyOpen] = useState(false);
+  const [signaturePolicyAccepted, setSignaturePolicyAccepted] = useState(false);
+  
   const [form, setForm] = useState({
     // Business Details
     trading_name: '',
@@ -807,26 +818,53 @@ export default function ApplicationForm() {
               <Separator />
 
               <div>
-                <h3 className="text-sm font-semibold text-primary mb-3">DECLARATION OF INTEREST</h3>
-                <p className="text-xs text-muted-foreground mb-4">
-                  PLEASE TICK & COMPLETE THE APPROPRIATE BOX BELOW (You may select all that apply):
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-primary">DECLARATION OF INTEREST</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setConflictPolicyOpen(true)}
+                    className="gap-2"
+                  >
+                    <BookOpen className="h-4 w-4" /> Read Policy
+                  </Button>
+                </div>
                 
-                <div className="space-y-3">
-                  <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
-                    <Checkbox 
-                      checked={form.declaration_no_conflict} 
-                      onCheckedChange={v => update('declaration_no_conflict', v as boolean)}
-                      className="mt-0.5"
-                    />
-                    <div className="text-sm">
-                      I hereby declare that, to the best of my knowledge and belief, there are no relevant facts 
-                      or circumstances which could give rise to an organizational or personal conflict of interest 
-                      for MultiChoice or any of its employee or customers.
-                    </div>
-                  </label>
-                  
-                  <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                {!conflictPolicyAccepted ? (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-center">
+                    <p className="text-sm text-amber-800 mb-3">
+                      Please read and accept the Conflict of Interest Policy before proceeding.
+                    </p>
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={() => setConflictPolicyOpen(true)}
+                      className="gap-2"
+                    >
+                      <BookOpen className="h-4 w-4" /> Read & Accept Policy
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      PLEASE TICK & COMPLETE THE APPROPRIATE BOX BELOW (You may select all that apply):
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                        <Checkbox 
+                          checked={form.declaration_no_conflict} 
+                          onCheckedChange={v => update('declaration_no_conflict', v as boolean)}
+                          className="mt-0.5"
+                        />
+                        <div className="text-sm">
+                          I hereby declare that, to the best of my knowledge and belief, there are no relevant facts 
+                          or circumstances which could give rise to an organizational or personal conflict of interest 
+                          for MultiChoice or any of its employee or customers.
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
                     <Checkbox 
                       checked={form.declaration_has_conflict} 
                       onCheckedChange={v => update('declaration_has_conflict', v as boolean)}
@@ -863,20 +901,53 @@ export default function ApplicationForm() {
                     />
                   </div>
                 )}
+                  </>
+                )}
               </div>
 
-              <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-                <Checkbox 
-                  id="terms" 
-                  checked={form.terms_accepted} 
-                  onCheckedChange={v => update('terms_accepted', v)} 
-                />
-                <Label htmlFor="terms" className="text-sm leading-relaxed">
-                  I confirm that I understand the nature of a sales channel partner and that this is an application 
-                  only, subject to approval by MultiChoice. I may not act as a sales channel partner without having 
-                  received written confirmation from MultiChoice. If approved, my relationship with MultiChoice will 
-                  be governed by the terms and conditions on the MultiChoice website.
-                </Label>
+              {/* Terms and Conditions */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-primary">TERMS & CONDITIONS</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setTermsPolicyOpen(true)}
+                    className="gap-2"
+                  >
+                    <BookOpen className="h-4 w-4" /> Read Terms
+                  </Button>
+                </div>
+                
+                {!termsPolicyAccepted ? (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-center">
+                    <p className="text-sm text-amber-800 mb-3">
+                      Please read and accept the Terms & Conditions before proceeding.
+                    </p>
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={() => setTermsPolicyOpen(true)}
+                      className="gap-2"
+                    >
+                      <BookOpen className="h-4 w-4" /> Read & Accept Terms
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+                    <Checkbox 
+                      id="terms" 
+                      checked={form.terms_accepted} 
+                      onCheckedChange={v => update('terms_accepted', v)} 
+                    />
+                    <Label htmlFor="terms" className="text-sm leading-relaxed">
+                      I confirm that I understand the nature of a sales channel partner and that this is an application 
+                      only, subject to approval by MultiChoice. I may not act as a sales channel partner without having 
+                      received written confirmation from MultiChoice. If approved, my relationship with MultiChoice will 
+                      be governed by the terms and conditions on the MultiChoice website.
+                    </Label>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -988,30 +1059,57 @@ export default function ApplicationForm() {
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-primary mb-3">SIGNATURE</h3>
-                <div className="space-y-4">
-                  <div className="border rounded-lg p-4 bg-white">
-                    <SignatureCanvas
-                      ref={signatureRef}
-                      canvasProps={{
-                        className: 'w-full h-32 border rounded cursor-crosshair',
-                      }}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={clearSignature}>
-                      Clear Signature
-                    </Button>
-                    <Button variant="default" size="sm" onClick={saveSignature} className="gap-2">
-                      <PenTool className="h-4 w-4" /> Save Signature
-                    </Button>
-                  </div>
-                  {form.signature_data && (
-                    <div className="flex items-center gap-2 text-sm text-success">
-                      <Check className="h-4 w-4" /> Signature saved
-                    </div>
-                  )}
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-primary">SIGNATURE</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setSignaturePolicyOpen(true)}
+                    className="gap-2"
+                  >
+                    <BookOpen className="h-4 w-4" /> Read Legal Notice
+                  </Button>
                 </div>
+                
+                {!signaturePolicyAccepted ? (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-center">
+                    <p className="text-sm text-amber-800 mb-3">
+                      Please read and accept the Legal Notice before signing.
+                    </p>
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={() => setSignaturePolicyOpen(true)}
+                      className="gap-2"
+                    >
+                      <BookOpen className="h-4 w-4" /> Read & Accept Legal Notice
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="border rounded-lg p-4 bg-white">
+                      <SignatureCanvas
+                        ref={signatureRef}
+                        canvasProps={{
+                          className: 'w-full h-32 border rounded cursor-crosshair',
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={clearSignature}>
+                        Clear Signature
+                      </Button>
+                      <Button variant="default" size="sm" onClick={saveSignature} className="gap-2">
+                        <PenTool className="h-4 w-4" /> Save Signature
+                      </Button>
+                    </div>
+                    {form.signature_data && (
+                      <div className="flex items-center gap-2 text-sm text-success">
+                        <Check className="h-4 w-4" /> Signature saved
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1059,8 +1157,8 @@ export default function ApplicationForm() {
                 </div>
               </div>
 
-              <div className="rounded-lg bg-warning/5 p-4 border border-warning/20">
-                <p className="text-sm text-warning-foreground">
+              <div className="rounded-lg bg-amber-50 p-4 border border-amber-200">
+                <p className="text-sm text-amber-800">
                   <Shield className="h-4 w-4 inline mr-2" />
                   By signing above, you confirm that all information provided is correct and complete. 
                   MultiChoice may take legal action if any information is found false or misleading.
@@ -1112,6 +1210,245 @@ export default function ApplicationForm() {
       <p className="text-xs text-muted-foreground text-center mt-4">
         Fields marked with * are required. This application is subject to approval by MultiChoice.
       </p>
+
+      {/* Conflict of Interest Policy Dialog */}
+      <Dialog open={conflictPolicyOpen} onOpenChange={setConflictPolicyOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Declaration of Interest Policy</DialogTitle>
+            <DialogDescription>
+              Please read and understand this policy before proceeding with your declaration.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-4 text-sm">
+              <h4 className="font-semibold">1. Purpose</h4>
+              <p>
+                This Declaration of Interest policy is designed to ensure transparency and integrity in the 
+                relationship between MultiChoice Tanzania and its channel partners. All applicants must 
+                disclose any potential conflicts of interest that may affect their ability to perform their 
+                duties impartially.
+              </p>
+
+              <h4 className="font-semibold">2. What Constitutes a Conflict of Interest</h4>
+              <p>A conflict of interest may arise when:</p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>You or an immediate family member has a financial interest in a competing business</li>
+                <li>You hold a position with a company that competes with or does business with MultiChoice</li>
+                <li>You have a personal relationship with a MultiChoice employee involved in channel partner management</li>
+                <li>You have access to confidential information that could benefit you or others improperly</li>
+                <li>You are currently or have been employed by a competitor within the last 2 years</li>
+              </ul>
+
+              <h4 className="font-semibold">3. Disclosure Requirements</h4>
+              <p>
+                All applicants must truthfully declare any actual, potential, or perceived conflicts of interest. 
+                Failure to disclose relevant information may result in rejection of your application or 
+                termination of your partnership agreement.
+              </p>
+
+              <h4 className="font-semibold">4. Ongoing Obligations</h4>
+              <p>
+                If approved as a channel partner, you must immediately notify MultiChoice of any new conflicts 
+                of interest that arise during the course of your partnership. This is a continuing obligation 
+                that remains in effect throughout your relationship with MultiChoice.
+              </p>
+
+              <h4 className="font-semibold">5. Consequences of Non-Disclosure</h4>
+              <p>
+                Deliberately withholding or misrepresenting information regarding conflicts of interest may 
+                result in:
+              </p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Rejection of your application</li>
+                <li>Termination of your partnership agreement</li>
+                <li>Legal action to recover any damages suffered by MultiChoice</li>
+                <li>Reporting to relevant regulatory authorities where applicable</li>
+              </ul>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConflictPolicyOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                setConflictPolicyAccepted(true);
+                setConflictPolicyOpen(false);
+              }}
+            >
+              I Understand & Accept
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Terms & Conditions Dialog */}
+      <Dialog open={termsPolicyOpen} onOpenChange={setTermsPolicyOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Terms & Conditions</DialogTitle>
+            <DialogDescription>
+              Please read and understand these terms before proceeding with your application.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-4 text-sm">
+              <h4 className="font-semibold">1. Nature of Relationship</h4>
+              <p>
+                By submitting this application, you acknowledge that you are applying to become an independent 
+                sales channel partner of MultiChoice Tanzania. This application does not constitute an employment 
+                contract or guarantee of acceptance.
+              </p>
+
+              <h4 className="font-semibold">2. Application Process</h4>
+              <p>
+                Submission of this application is the first step in the evaluation process. MultiChoice reserves 
+                the right to accept or reject any application at its sole discretion. You may not represent 
+                yourself as a MultiChoice channel partner until you have received written confirmation of approval.
+              </p>
+
+              <h4 className="font-semibold">3. Information Accuracy</h4>
+              <p>
+                All information provided in this application must be accurate, complete, and truthful. 
+                MultiChoice reserves the right to verify any information provided and to reject applications 
+                containing false or misleading information.
+              </p>
+
+              <h4 className="font-semibold">4. Governing Terms</h4>
+              <p>
+                If approved, your relationship with MultiChoice will be governed by the full Channel Partner 
+                Agreement and any applicable policies published on the MultiChoice website. These terms may be 
+                updated from time to time, and continued partnership constitutes acceptance of such updates.
+              </p>
+
+              <h4 className="font-semibold">5. Data Protection</h4>
+              <p>
+                By submitting this application, you consent to the collection, processing, and storage of your 
+                personal information in accordance with applicable data protection laws and MultiChoice's 
+                Privacy Policy.
+              </p>
+
+              <h4 className="font-semibold">6. Confidentiality</h4>
+              <p>
+                All information shared with you during the application process and any subsequent partnership 
+                is confidential and may not be disclosed to third parties without written consent from MultiChoice.
+              </p>
+
+              <h4 className="font-semibold">7. Intellectual Property</h4>
+              <p>
+                MultiChoice trademarks, logos, and other intellectual property may only be used in accordance 
+                with the Channel Partner Agreement and brand guidelines. Unauthorized use is strictly prohibited.
+              </p>
+
+              <h4 className="font-semibold">8. Compliance</h4>
+              <p>
+                Channel partners must comply with all applicable laws, regulations, and MultiChoice policies. 
+                Non-compliance may result in termination of the partnership and potential legal action.
+              </p>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTermsPolicyOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                setTermsPolicyAccepted(true);
+                setTermsPolicyOpen(false);
+              }}
+            >
+              I Understand & Accept
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Signature Legal Notice Dialog */}
+      <Dialog open={signaturePolicyOpen} onOpenChange={setSignaturePolicyOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Legal Notice - Digital Signature</DialogTitle>
+            <DialogDescription>
+              Please read this important legal notice before providing your signature.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-4 text-sm">
+              <h4 className="font-semibold">1. Legal Validity of Digital Signature</h4>
+              <p>
+                By signing this application digitally, you acknowledge that your electronic signature has the 
+                same legal effect and enforceability as a handwritten signature. This is in accordance with 
+                the Electronic Transactions Act of Tanzania and applicable international standards.
+              </p>
+
+              <h4 className="font-semibold">2. Authentication</h4>
+              <p>
+                Your digital signature, combined with the information provided in this application, serves to 
+                authenticate your identity and your intention to be bound by the terms of this application 
+                and any subsequent agreements.
+              </p>
+
+              <h4 className="font-semibold">3. Declaration of Truth</h4>
+              <p>
+                By signing this application, you solemnly declare that:
+              </p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>All information provided in this application is true, accurate, and complete</li>
+                <li>You have not withheld any material information that might affect MultiChoice's decision</li>
+                <li>You understand and accept all terms and conditions associated with this application</li>
+                <li>You have the legal capacity and authority to enter into this agreement</li>
+              </ul>
+
+              <h4 className="font-semibold">4. Consequences of False Declaration</h4>
+              <p>
+                Making a false declaration or providing fraudulent information is a serious offense that may result in:
+              </p>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Immediate rejection of your application</li>
+                <li>Termination of any existing partnership agreement</li>
+                <li>Civil liability for damages suffered by MultiChoice</li>
+                <li>Criminal prosecution under applicable laws</li>
+                <li>Permanent disqualification from future partnership opportunities</li>
+              </ul>
+
+              <h4 className="font-semibold">5. Witness Requirements</h4>
+              <p>
+                You are required to provide the names of two witnesses who can attest to your identity and 
+                the authenticity of your signature. These witnesses may be contacted by MultiChoice for 
+                verification purposes.
+              </p>
+
+              <h4 className="font-semibold">6. Record Keeping</h4>
+              <p>
+                MultiChoice will maintain a secure record of your signed application, including the timestamp, 
+                location, and any associated metadata. This record may be used as evidence in any legal 
+                proceedings if necessary.
+              </p>
+
+              <h4 className="font-semibold">7. Right to Withdraw</h4>
+              <p>
+                Once you have signed and submitted this application, you may request to withdraw it within 
+                7 days by contacting MultiChoice in writing. After this period, the application will proceed 
+                through the normal evaluation process.
+              </p>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignaturePolicyOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                setSignaturePolicyAccepted(true);
+                setSignaturePolicyOpen(false);
+              }}
+            >
+              I Understand & Accept
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

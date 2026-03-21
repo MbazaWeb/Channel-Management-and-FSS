@@ -1,4 +1,4 @@
-const CACHE_NAME = 'channel-fss-v2';
+const CACHE_NAME = 'channel-fss-v3';
 const STATIC_ASSETS = [
   '/favicon.ico',
   '/manifest.json'

@@ -268,6 +268,10 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          dsf_monthly_target: number | null
+          dsf_target: number | null
+          esp_monthly_target: number | null
+          esp_target: number | null
           id: string
           monthly_target: number | null
           name: string
@@ -279,6 +283,10 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          dsf_monthly_target?: number | null
+          dsf_target?: number | null
+          esp_monthly_target?: number | null
+          esp_target?: number | null
           id?: string
           monthly_target?: number | null
           name: string
@@ -290,6 +298,10 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          dsf_monthly_target?: number | null
+          dsf_target?: number | null
+          esp_monthly_target?: number | null
+          esp_target?: number | null
           id?: string
           monthly_target?: number | null
           name?: string

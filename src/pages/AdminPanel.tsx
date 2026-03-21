@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
-import { Shield, Plus, MapPin, FileText, Check, X, Download, Eye, BarChart3, Globe, ChevronDown, Paperclip, Pencil, Trash2, ArrowLeft, Users, Search, Target, TrendingDown, Calendar, Bell, Clock } from 'lucide-react';
+import { Shield, Plus, MapPin, FileText, Check, X, Download, Eye, BarChart3, Globe, ChevronDown, Paperclip, Pencil, Trash2, ArrowLeft, Users, Search, Target, TrendingDown, Calendar, Bell, Clock, Edit } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { exportApplicationPdf, exportApplicationsListPdf } from '@/lib/exportPdf';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -1032,13 +1032,15 @@ function ZonesTerritoriesManager() {
   const [zoneDsfTarget, setZoneDsfTarget] = useState('');
   const [territoryName, setTerritoryName] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState('');
-  const [yearTarget, setYearTarget] = useState('');
+  const [espTarget, setEspTarget] = useState('');
+  const [dsfTarget, setDsfTarget] = useState('');
   
   // Edit state for territory
   const [editingTerritory, setEditingTerritory] = useState<Territory | null>(null);
   const [editName, setEditName] = useState('');
   const [editZoneId, setEditZoneId] = useState('');
-  const [editYearTarget, setEditYearTarget] = useState('');
+  const [editEspTarget, setEditEspTarget] = useState('');
+  const [editDsfTarget, setEditDsfTarget] = useState('');
   
   // Edit state for zone
   const [editingZone, setEditingZone] = useState<string | null>(null);
@@ -1046,9 +1048,21 @@ function ZonesTerritoriesManager() {
   const [editZoneEspTarget, setEditZoneEspTarget] = useState('');
   const [editZoneDsfTarget, setEditZoneDsfTarget] = useState('');
 
-  // Calculate monthly from year target
-  const calculatedMonthly = yearTarget ? Math.round(parseInt(yearTarget) / 12) : 0;
-  const editCalculatedMonthly = editYearTarget ? Math.round(parseInt(editYearTarget) / 12) : 0;
+  // Calculate totals and monthly targets
+  const espVal = parseInt(espTarget) || 0;
+  const dsfVal = parseInt(dsfTarget) || 0;
+  const totalYearTarget = espVal + dsfVal;
+  const espMonthly = Math.round(espVal / 12);
+  const dsfMonthly = Math.round(dsfVal / 12);
+  const totalMonthly = espMonthly + dsfMonthly;
+  
+  // Edit calculations
+  const editEspVal = parseInt(editEspTarget) || 0;
+  const editDsfVal = parseInt(editDsfTarget) || 0;
+  const editTotalYear = editEspVal + editDsfVal;
+  const editEspMonthly = Math.round(editEspVal / 12);
+  const editDsfMonthly = Math.round(editDsfVal / 12);
+  const editTotalMonthly = editEspMonthly + editDsfMonthly;
 
   const { data: zones = [] } = useQuery({
     queryKey: ['zones'],
@@ -1107,18 +1121,21 @@ function ZonesTerritoriesManager() {
   const addTerritory = useMutation({
     mutationFn: async () => {
       if (!territoryName.trim() || !selectedZoneId) throw new Error('Name and zone required');
-      const yearTargetVal = parseInt(yearTarget) || 0;
       const { error } = await supabase.from('territories').insert({
         name: territoryName.trim(),
         zone_id: selectedZoneId,
-        year_target: yearTargetVal,
-        monthly_target: Math.round(yearTargetVal / 12),
+        esp_target: espVal,
+        dsf_target: dsfVal,
+        year_target: totalYearTarget,
+        esp_monthly_target: espMonthly,
+        dsf_monthly_target: dsfMonthly,
+        monthly_target: totalMonthly,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['territories'] });
-      setTerritoryName(''); setYearTarget('');
+      setTerritoryName(''); setEspTarget(''); setDsfTarget('');
       toast.success('Territory created');
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1127,12 +1144,15 @@ function ZonesTerritoriesManager() {
   const updateTerritory = useMutation({
     mutationFn: async () => {
       if (!editingTerritory || !editName.trim()) throw new Error('Name required');
-      const yearTargetVal = parseInt(editYearTarget) || 0;
       const { error } = await supabase.from('territories').update({
         name: editName.trim(),
         zone_id: editZoneId || null,
-        year_target: yearTargetVal,
-        monthly_target: Math.round(yearTargetVal / 12),
+        esp_target: editEspVal,
+        dsf_target: editDsfVal,
+        year_target: editTotalYear,
+        esp_monthly_target: editEspMonthly,
+        dsf_monthly_target: editDsfMonthly,
+        monthly_target: editTotalMonthly,
       }).eq('id', editingTerritory.id);
       if (error) throw error;
     },
@@ -1160,14 +1180,16 @@ function ZonesTerritoriesManager() {
     setEditingTerritory(t);
     setEditName(t.name);
     setEditZoneId(t.zone_id || '');
-    setEditYearTarget(String(t.year_target || 0));
+    setEditEspTarget(String(t.esp_target || 0));
+    setEditDsfTarget(String(t.dsf_target || 0));
   };
 
   const cancelEdit = () => {
     setEditingTerritory(null);
     setEditName('');
     setEditZoneId('');
-    setEditYearTarget('');
+    setEditEspTarget('');
+    setEditDsfTarget('');
   };
 
   return (
@@ -1192,7 +1214,7 @@ function ZonesTerritoriesManager() {
         <h3 className="font-display font-semibold text-card-foreground flex items-center gap-2">
           <MapPin className="h-4 w-4 text-primary" /> New Territory
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="space-y-1.5">
             <Label className="text-xs">Zone</Label>
             <Select value={selectedZoneId} onValueChange={setSelectedZoneId}>
@@ -1209,13 +1231,20 @@ function ZonesTerritoriesManager() {
             <Input value={territoryName} onChange={e => setTerritoryName(e.target.value)} placeholder="Name" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Year Target</Label>
-            <Input type="number" value={yearTarget} onChange={e => setYearTarget(e.target.value)} placeholder="0" />
+            <Label className="text-xs">ESP Year Target</Label>
+            <Input type="number" value={espTarget} onChange={e => setEspTarget(e.target.value)} placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Monthly Target (Auto)</Label>
-            <Input type="number" value={calculatedMonthly} disabled className="bg-muted" />
+            <Label className="text-xs">DSF Year Target</Label>
+            <Input type="number" value={dsfTarget} onChange={e => setDsfTarget(e.target.value)} placeholder="0" />
           </div>
+        </div>
+        {/* Calculated targets display */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 bg-muted/50 rounded text-xs">
+          <div><span className="text-muted-foreground">Total Year:</span> <span className="font-medium">{totalYearTarget}</span></div>
+          <div><span className="text-muted-foreground">ESP Monthly:</span> <span className="font-medium text-blue-600">{espMonthly}</span></div>
+          <div><span className="text-muted-foreground">DSF Monthly:</span> <span className="font-medium text-purple-600">{dsfMonthly}</span></div>
+          <div><span className="text-muted-foreground">Total Monthly:</span> <span className="font-medium">{totalMonthly}</span></div>
         </div>
         <Button onClick={() => addTerritory.mutate()} disabled={addTerritory.isPending} size="sm">
           Add Territory
@@ -1271,7 +1300,7 @@ function ZonesTerritoriesManager() {
                     <div key={t.id} className="px-4 py-3">
                       {editingTerritory?.id === t.id ? (
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" />
                             <Select value={editZoneId} onValueChange={setEditZoneId}>
                               <SelectTrigger><SelectValue placeholder="Zone" /></SelectTrigger>
@@ -1282,13 +1311,19 @@ function ZonesTerritoriesManager() {
                               </SelectContent>
                             </Select>
                             <div className="space-y-1">
-                              <Label className="text-xs">Year Target</Label>
-                              <Input type="number" value={editYearTarget} onChange={e => setEditYearTarget(e.target.value)} placeholder="Year Target" />
+                              <Label className="text-xs">ESP Year</Label>
+                              <Input type="number" value={editEspTarget} onChange={e => setEditEspTarget(e.target.value)} placeholder="ESP" />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Monthly (Auto)</Label>
-                              <Input type="number" value={editCalculatedMonthly} disabled className="bg-muted" />
+                              <Label className="text-xs">DSF Year</Label>
+                              <Input type="number" value={editDsfTarget} onChange={e => setEditDsfTarget(e.target.value)} placeholder="DSF" />
                             </div>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 p-2 bg-muted/50 rounded text-xs">
+                            <div><span className="text-muted-foreground">Total:</span> <span className="font-medium">{editTotalYear}</span></div>
+                            <div><span className="text-muted-foreground">ESP/mo:</span> <span className="font-medium text-blue-600">{editEspMonthly}</span></div>
+                            <div><span className="text-muted-foreground">DSF/mo:</span> <span className="font-medium text-purple-600">{editDsfMonthly}</span></div>
+                            <div><span className="text-muted-foreground">Total/mo:</span> <span className="font-medium">{editTotalMonthly}</span></div>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" onClick={() => updateTerritory.mutate()} disabled={updateTerritory.isPending}>
@@ -1300,17 +1335,17 @@ function ZonesTerritoriesManager() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
                           <div>
                             <p className="text-sm font-medium text-card-foreground flex items-center gap-1.5">
                               <MapPin className="h-3 w-3 text-secondary" /> {t.name}
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <div className="text-xs text-muted-foreground text-right">
-                              <span className="font-medium">Year: {t.year_target || 0}</span>
-                              <span className="mx-1">|</span>
-                              <span>Monthly: {t.monthly_target || 0}</span>
+                            <div className="text-xs text-muted-foreground text-right flex flex-wrap gap-x-2">
+                              <span><span className="text-blue-600">ESP:</span> {t.esp_target || 0} ({t.esp_monthly_target || 0}/mo)</span>
+                              <span><span className="text-purple-600">DSF:</span> {t.dsf_target || 0} ({t.dsf_monthly_target || 0}/mo)</span>
+                              <span className="font-medium">Total: {t.year_target || 0} ({t.monthly_target || 0}/mo)</span>
                             </div>
                             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEdit(t)}>
                               <Pencil className="h-3 w-3" />
@@ -1341,7 +1376,7 @@ function ZonesTerritoriesManager() {
                 <div key={t.id} className="px-4 py-3">
                   {editingTerritory?.id === t.id ? (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" />
                         <Select value={editZoneId} onValueChange={setEditZoneId}>
                           <SelectTrigger><SelectValue placeholder="Zone" /></SelectTrigger>
@@ -1352,13 +1387,19 @@ function ZonesTerritoriesManager() {
                           </SelectContent>
                         </Select>
                         <div className="space-y-1">
-                          <Label className="text-xs">Year Target</Label>
-                          <Input type="number" value={editYearTarget} onChange={e => setEditYearTarget(e.target.value)} placeholder="Year Target" />
+                          <Label className="text-xs">ESP Year</Label>
+                          <Input type="number" value={editEspTarget} onChange={e => setEditEspTarget(e.target.value)} placeholder="ESP" />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Monthly (Auto)</Label>
-                          <Input type="number" value={editCalculatedMonthly} disabled className="bg-muted" />
+                          <Label className="text-xs">DSF Year</Label>
+                          <Input type="number" value={editDsfTarget} onChange={e => setEditDsfTarget(e.target.value)} placeholder="DSF" />
                         </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 p-2 bg-muted/50 rounded text-xs">
+                        <div><span className="text-muted-foreground">Total:</span> <span className="font-medium">{editTotalYear}</span></div>
+                        <div><span className="text-muted-foreground">ESP/mo:</span> <span className="font-medium text-blue-600">{editEspMonthly}</span></div>
+                        <div><span className="text-muted-foreground">DSF/mo:</span> <span className="font-medium text-purple-600">{editDsfMonthly}</span></div>
+                        <div><span className="text-muted-foreground">Total/mo:</span> <span className="font-medium">{editTotalMonthly}</span></div>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => updateTerritory.mutate()} disabled={updateTerritory.isPending}>
@@ -1370,13 +1411,13 @@ function ZonesTerritoriesManager() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <p className="text-sm font-medium text-card-foreground">{t.name}</p>
                       <div className="flex items-center gap-3">
-                        <div className="text-xs text-muted-foreground text-right">
-                          <span className="font-medium">Year: {t.year_target || 0}</span>
-                          <span className="mx-1">|</span>
-                          <span>Monthly: {t.monthly_target || 0}</span>
+                        <div className="text-xs text-muted-foreground text-right flex flex-wrap gap-x-2">
+                          <span><span className="text-blue-600">ESP:</span> {t.esp_target || 0} ({t.esp_monthly_target || 0}/mo)</span>
+                          <span><span className="text-purple-600">DSF:</span> {t.dsf_target || 0} ({t.dsf_monthly_target || 0}/mo)</span>
+                          <span className="font-medium">Total: {t.year_target || 0} ({t.monthly_target || 0}/mo)</span>
                         </div>
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEdit(t)}>
                           <Pencil className="h-3 w-3" />

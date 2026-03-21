@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Development
+.git/
+.gitignore
+*.md
+!README.md
+
+# Tests
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+coverage/
+playwright-report/
+test-results/
+
+# Config files not needed for build
+.eslintrc*
+eslint.config.js
+vitest.config.ts
+playwright.config.ts
+playwright-fixture.ts
+tsconfig.node.json
+
+# IDE
+.vscode/
+.idea/
+
+# Supabase (migrations are for DB, not frontend)
+supabase/
+
+# Lock files (Vercel installs fresh)
+bun.lockb
+yarn.lock
+pnpm-lock.yaml
+
+# Environment
+.env.local
+.env.*.local

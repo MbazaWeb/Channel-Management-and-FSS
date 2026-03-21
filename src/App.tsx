@@ -14,6 +14,8 @@ const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const DEPanel = lazy(() => import("./pages/DEPanel"));
 const StatusPage = lazy(() => import("./pages/StatusPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const GlobalImport = lazy(() => import("./pages/GlobalImport"));
+const ActiveUpload = lazy(() => import("./pages/ActiveUpload"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -39,6 +41,8 @@ const App = () => (
                 <Route path="/status" element={<StatusPage />} />
                 <Route path="/apply" element={<ApplicationForm />} />
                 <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/admin/import" element={<GlobalImport />} />
+                <Route path="/admin/active" element={<ActiveUpload />} />
                 <Route path="/de" element={<DEPanel />} />
               </Route>
               <Route path="/login" element={<LoginPage />} />

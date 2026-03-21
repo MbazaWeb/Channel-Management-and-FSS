@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TerritoryLeaderboard } from '@/components/dashboard/TerritoryLeaderboard';
-import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus, Calendar, Shield, Briefcase } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus, Calendar, Shield } from 'lucide-react';
 import {
   Tooltip,
   ResponsiveContainer,
@@ -36,8 +36,11 @@ interface TerritoryData {
   pending: number;
   total: number;
   espCount: number;
+  espActive: number;
   dsfCount: number;
+  dsfActive: number;
   fssCount: number;
+  activeCount: number;
 }
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--accent))'];
@@ -48,7 +51,7 @@ export default function PublicDashboard() {
     queryFn: async () => {
       const { data } = await supabase
         .from('applications')
-        .select('status, territory_id, zone_id, created_at, fss_user, channel')
+        .select('status, territory_id, zone_id, created_at, fss_user, channel, is_active')
         .order('created_at', { ascending: false });
       return data ?? [];
     },
@@ -148,9 +151,16 @@ export default function PublicDashboard() {
   // Channel statistics (ESP vs DSF)
   const espTotal = filteredApps.filter(a => a.channel === 'ESP' || !a.channel).length;
   const espApproved = filteredApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+  const espActive = filteredApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.is_active).length;
   const dsfTotal = filteredApps.filter(a => a.channel === 'DSF').length;
   const dsfApproved = filteredApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+  const dsfActive = filteredApps.filter(a => a.channel === 'DSF' && a.is_active).length;
   const tlCount = teamLeaders.length;
+  
+  // Active channel statistics
+  const totalActive = filteredApps.filter(a => a.is_active).length;
+  const espPerformance = espApproved > 0 ? Math.round((espActive / espApproved) * 100) : 0;
+  const dsfPerformance = dsfApproved > 0 ? Math.round((dsfActive / dsfApproved) * 100) : 0;
   
   const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
   const rejectionRate = total > 0 ? Math.round((rejected / total) * 100) : 0;
@@ -165,8 +175,11 @@ export default function PublicDashboard() {
       
       // Channel breakdown
       const espCount = territoryApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+      const espActive = territoryApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.is_active).length;
       const dsfCount = territoryApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+      const dsfActive = territoryApps.filter(a => a.channel === 'DSF' && a.is_active).length;
       const fssCount = territoryApps.filter(a => a.fss_user === true && a.status === 'approved').length;
+      const activeCount = territoryApps.filter(a => a.is_active).length;
       
       return {
         id: t.id,
@@ -179,8 +192,11 @@ export default function PublicDashboard() {
         pending: territoryApps.filter(a => a.status === 'pending').length,
         total: territoryApps.length,
         espCount,
+        espActive,
         dsfCount,
+        dsfActive,
         fssCount,
+        activeCount,
       };
     })
     .filter(t => t.target > 0 || t.actual > 0 || t.pending > 0);
@@ -196,8 +212,11 @@ export default function PublicDashboard() {
     
     // Channel breakdown for zone
     const espCount = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+    const espActive = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.is_active).length;
     const dsfCount = zoneApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+    const dsfActive = zoneApps.filter(a => a.channel === 'DSF' && a.is_active).length;
     const fssCount = zoneApps.filter(a => a.fss_user === true && a.status === 'approved').length;
+    const activeCount = zoneApps.filter(a => a.is_active).length;
     
     return {
       id: z.id,
@@ -208,8 +227,11 @@ export default function PublicDashboard() {
       achievement,
       territoryCount: zoneTerritories.length,
       espCount,
+      espActive,
       dsfCount,
+      dsfActive,
       fssCount,
+      activeCount,
     };
   });
 
@@ -341,9 +363,9 @@ export default function PublicDashboard() {
       </div>
 
       {/* Channel Stats Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
         <StatCard 
-          title="ESP Applications" 
+          title="ESP Total" 
           value={espTotal} 
           icon={Shield} 
           color="primary"
@@ -355,10 +377,16 @@ export default function PublicDashboard() {
           color="success"
         />
         <StatCard 
-          title="DSF Applications" 
+          title="ESP Active" 
+          value={espActive} 
+          icon={TrendingUp} 
+          color="info"
+        />
+        <StatCard 
+          title="DSF Total" 
           value={dsfTotal} 
           icon={FileText} 
-          color="info"
+          color="secondary"
         />
         <StatCard 
           title="DSF Approved" 
@@ -367,34 +395,37 @@ export default function PublicDashboard() {
           color="success"
         />
         <StatCard 
-          title="Team Leaders" 
-          value={tlCount} 
-          icon={Briefcase} 
-          color="secondary"
+          title="DSF Active" 
+          value={dsfActive} 
+          icon={TrendingUp} 
+          color="info"
         />
       </div>
 
-      {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-lg bg-primary/5 p-3 text-center">
-          <p className="text-xs text-muted-foreground">Approval Rate</p>
-          <p className="text-xl font-bold text-primary">{approvalRate}%</p>
+      {/* Performance Summary Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="rounded-lg bg-green-500/5 p-3 text-center border border-green-500/10">
+          <p className="text-xs text-muted-foreground">Total Active</p>
+          <p className="text-xl font-bold text-green-600">{totalActive}</p>
+          <p className="text-xs text-muted-foreground">{approved > 0 ? Math.round((totalActive / approved) * 100) : 0}% of approved</p>
         </div>
-        <div className="rounded-lg bg-destructive/5 p-3 text-center">
-          <p className="text-xs text-muted-foreground">Rejection Rate</p>
-          <p className="text-xl font-bold text-destructive">{rejectionRate}%</p>
+        <div className="rounded-lg bg-blue-500/5 p-3 text-center border border-blue-500/10">
+          <p className="text-xs text-muted-foreground">ESP Performance</p>
+          <p className="text-xl font-bold text-blue-600">{espPerformance}%</p>
+          <p className="text-xs text-muted-foreground">{espActive} of {espApproved} active</p>
         </div>
-        <div className="rounded-lg bg-secondary/5 p-3 text-center">
+        <div className="rounded-lg bg-purple-500/5 p-3 text-center border border-purple-500/10">
+          <p className="text-xs text-muted-foreground">DSF Performance</p>
+          <p className="text-xl font-bold text-purple-600">{dsfPerformance}%</p>
+          <p className="text-xs text-muted-foreground">{dsfActive} of {dsfApproved} active</p>
+        </div>
+        <div className="rounded-lg bg-primary/5 p-3 text-center border border-primary/10">
+          <p className="text-xs text-muted-foreground">Team Leaders</p>
+          <p className="text-xl font-bold text-primary">{tlCount}</p>
+        </div>
+        <div className="rounded-lg bg-accent/5 p-3 text-center border border-accent/10">
           <p className="text-xs text-muted-foreground">Active Territories</p>
-          <p className="text-xl font-bold text-secondary">{territoryData.length}</p>
-        </div>
-        <div className="rounded-lg bg-accent/5 p-3 text-center">
-          <p className="text-xs text-muted-foreground">Avg Achievement</p>
-          <p className="text-xl font-bold text-accent">
-            {territoryData.length > 0 
-              ? Math.round(territoryData.reduce((acc, t) => acc + t.achievement, 0) / territoryData.length) 
-              : 0}%
-          </p>
+          <p className="text-xl font-bold text-accent">{territoryData.length}</p>
         </div>
       </div>
 
@@ -548,19 +579,22 @@ export default function PublicDashboard() {
                     </div>
                     {/* Channel breakdown */}
                     <div className="border-t pt-2 mt-2">
-                      <p className="text-xs text-muted-foreground mb-2">Channel Breakdown</p>
+                      <p className="text-xs text-muted-foreground mb-2">Channel Breakdown (Active / Total)</p>
                       <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="rounded bg-blue-50 p-1.5 text-center">
+                        <div className="rounded bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
                           <p className="text-muted-foreground">ESP</p>
-                          <p className="font-semibold text-blue-600">{zone.espCount}</p>
+                          <p className="font-semibold text-blue-600">{zone.espActive} / {zone.espCount}</p>
+                          <p className="text-xs text-muted-foreground">{zone.espCount > 0 ? Math.round((zone.espActive / zone.espCount) * 100) : 0}%</p>
                         </div>
-                        <div className="rounded bg-green-50 p-1.5 text-center">
+                        <div className="rounded bg-purple-50 dark:bg-purple-950/30 p-1.5 text-center">
                           <p className="text-muted-foreground">DSF</p>
-                          <p className="font-semibold text-green-600">{zone.dsfCount}</p>
+                          <p className="font-semibold text-purple-600">{zone.dsfActive} / {zone.dsfCount}</p>
+                          <p className="text-xs text-muted-foreground">{zone.dsfCount > 0 ? Math.round((zone.dsfActive / zone.dsfCount) * 100) : 0}%</p>
                         </div>
-                        <div className="rounded bg-purple-50 p-1.5 text-center">
-                          <p className="text-muted-foreground">FSS</p>
-                          <p className="font-semibold text-purple-600">{zone.fssCount}</p>
+                        <div className="rounded bg-green-50 dark:bg-green-950/30 p-1.5 text-center">
+                          <p className="text-muted-foreground">Active</p>
+                          <p className="font-semibold text-green-600">{zone.activeCount}</p>
+                          <p className="text-xs text-muted-foreground">Total</p>
                         </div>
                       </div>
                     </div>

@@ -112,8 +112,21 @@ export default function AdminPanel() {
           <h1 className="text-xl font-display font-bold text-foreground">Admin Panel</h1>
         </div>
 
-        {/* Notifications Bell */}
-        <Popover>
+        <div className="flex items-center gap-2">
+          {/* Global Import Button */}
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin/import')} className="gap-2">
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">Global Import</span>
+          </Button>
+
+          {/* Active Upload Button */}
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin/active')} className="gap-2">
+            <TrendingDown className="h-4 w-4" />
+            <span className="hidden sm:inline">Active Upload</span>
+          </Button>
+
+          {/* Notifications Bell */}
+          <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="icon" className="relative">
               <Bell className="h-4 w-4" />
@@ -175,6 +188,7 @@ export default function AdminPanel() {
             </ScrollArea>
           </PopoverContent>
         </Popover>
+        </div>
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-4">

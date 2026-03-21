@@ -76,6 +76,9 @@ export type Database = {
           fss_user: boolean | null
           gender: string | null
           id: string
+          is_active: boolean
+          last_active_date: string | null
+          last_active_month: string | null
           physical_address: string | null
           postal_address: string | null
           registration_number: string | null
@@ -120,6 +123,9 @@ export type Database = {
           fss_user?: boolean | null
           gender?: string | null
           id?: string
+          is_active?: boolean
+          last_active_date?: string | null
+          last_active_month?: string | null
           physical_address?: string | null
           postal_address?: string | null
           registration_number?: string | null
@@ -164,6 +170,9 @@ export type Database = {
           fss_user?: boolean | null
           gender?: string | null
           id?: string
+          is_active?: boolean
+          last_active_date?: string | null
+          last_active_month?: string | null
           physical_address?: string | null
           postal_address?: string | null
           registration_number?: string | null

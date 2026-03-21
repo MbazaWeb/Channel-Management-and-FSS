@@ -5,6 +5,9 @@ interface TerritoryData {
   name: string;
   target: number;
   actual: number;
+  espCount?: number;
+  dsfCount?: number;
+  fssCount?: number;
 }
 
 interface Props {
@@ -44,6 +47,20 @@ export function TerritoryLeaderboard({ territories }: Props) {
                     {t.actual}/{t.target} ({pct}%)
                   </span>
                 </div>
+                {/* Channel breakdown badges */}
+                {(t.espCount !== undefined || t.dsfCount !== undefined || t.fssCount !== undefined) && (
+                  <div className="flex gap-2 mt-2">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                      ESP: {t.espCount || 0}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+                      DSF: {t.dsfCount || 0}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                      FSS: {t.fssCount || 0}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           );

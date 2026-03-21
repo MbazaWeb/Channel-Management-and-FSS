@@ -55,6 +55,7 @@ export type Database = {
       applications: {
         Row: {
           authority_to_transact: string | null
+          channel: string
           channel_type_other: string | null
           channel_types: string[] | null
           citizenship: string | null
@@ -68,6 +69,8 @@ export type Database = {
           date_of_birth: string | null
           declaration_date: string | null
           designation_capacity: string | null
+          dsf_d_number: string | null
+          dsf_fss_user: boolean | null
           email1: string
           email2: string | null
           fss_user: boolean | null
@@ -83,6 +86,7 @@ export type Database = {
           signed_at_location: string | null
           status: string
           submitted_by: string | null
+          team_leader_id: string | null
           telephone_cell: string
           telephone_work: string | null
           territory_id: string | null
@@ -95,6 +99,7 @@ export type Database = {
         }
         Insert: {
           authority_to_transact?: string | null
+          channel?: string
           channel_type_other?: string | null
           channel_types?: string[] | null
           citizenship?: string | null
@@ -108,6 +113,8 @@ export type Database = {
           date_of_birth?: string | null
           declaration_date?: string | null
           designation_capacity?: string | null
+          dsf_d_number?: string | null
+          dsf_fss_user?: boolean | null
           email1: string
           email2?: string | null
           fss_user?: boolean | null
@@ -123,6 +130,7 @@ export type Database = {
           signed_at_location?: string | null
           status?: string
           submitted_by?: string | null
+          team_leader_id?: string | null
           telephone_cell: string
           telephone_work?: string | null
           territory_id?: string | null
@@ -135,6 +143,7 @@ export type Database = {
         }
         Update: {
           authority_to_transact?: string | null
+          channel?: string
           channel_type_other?: string | null
           channel_types?: string[] | null
           citizenship?: string | null
@@ -148,6 +157,8 @@ export type Database = {
           date_of_birth?: string | null
           declaration_date?: string | null
           designation_capacity?: string | null
+          dsf_d_number?: string | null
+          dsf_fss_user?: boolean | null
           email1?: string
           email2?: string | null
           fss_user?: boolean | null
@@ -163,6 +174,7 @@ export type Database = {
           signed_at_location?: string | null
           status?: string
           submitted_by?: string | null
+          team_leader_id?: string | null
           telephone_cell?: string
           telephone_work?: string | null
           territory_id?: string | null
@@ -339,6 +351,111 @@ export type Database = {
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "applications"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      team_leaders: {
+        Row: {
+          id: string
+          name: string
+          zone_id: string | null
+          territory_id: string | null
+          cluster: string | null
+          target_dsf_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          zone_id?: string | null
+          territory_id?: string | null
+          cluster?: string | null
+          target_dsf_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          zone_id?: string | null
+          territory_id?: string | null
+          cluster?: string | null
+          target_dsf_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_leaders_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_leaders_territory_id_fkey"
+            columns: ["territory_id"]
+            isOneToOne: false
+            referencedRelation: "territories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      dsf_records: {
+        Row: {
+          id: string
+          application_id: string | null
+          dsf_name: string
+          d_number: string
+          fss_user: boolean
+          team_leader_id: string | null
+          zone_id: string | null
+          territory_id: string | null
+          fss_status: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          application_id?: string | null
+          dsf_name: string
+          d_number: string
+          fss_user?: boolean
+          team_leader_id?: string | null
+          zone_id?: string | null
+          territory_id?: string | null
+          fss_status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          application_id?: string | null
+          dsf_name?: string
+          d_number?: string
+          fss_user?: boolean
+          team_leader_id?: string | null
+          zone_id?: string | null
+          territory_id?: string | null
+          fss_status?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dsf_records_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: true
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dsf_records_team_leader_id_fkey"
+            columns: ["team_leader_id"]
+            isOneToOne: false
+            referencedRelation: "team_leaders"
             referencedColumns: ["id"]
           }
         ]

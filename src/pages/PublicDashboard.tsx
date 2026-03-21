@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TerritoryLeaderboard } from '@/components/dashboard/TerritoryLeaderboard';
-import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus, Calendar } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Target, Globe, TrendingUp, Award, PieChartIcon, Users, UserCheck, UserMinus, Calendar, Shield, Briefcase } from 'lucide-react';
 import {
   Tooltip,
   ResponsiveContainer,
@@ -35,6 +35,9 @@ interface TerritoryData {
   achievement: number;
   pending: number;
   total: number;
+  espCount: number;
+  dsfCount: number;
+  fssCount: number;
 }
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--accent))'];
@@ -45,7 +48,7 @@ export default function PublicDashboard() {
     queryFn: async () => {
       const { data } = await supabase
         .from('applications')
-        .select('status, territory_id, zone_id, created_at, fss_user')
+        .select('status, territory_id, zone_id, created_at, fss_user, channel')
         .order('created_at', { ascending: false });
       return data ?? [];
     },
@@ -73,13 +76,24 @@ export default function PublicDashboard() {
     },
   });
 
+  const { data: teamLeaders = [] } = useQuery({
+    queryKey: ['public-team-leaders'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('team_leaders')
+        .select('*, zones(name), territories(name)')
+        .order('name');
+      return data ?? [];
+    },
+  });
+
   // Date filter state
   const [dateFilter, setDateFilter] = useState<string>('ytd');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
   // Calculate date ranges
-  const getDateRange = (filter: string): { start: Date; end: Date } => {
+  const getDateRange = useCallback((filter: string): { start: Date; end: Date } => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -108,7 +122,7 @@ export default function PublicDashboard() {
       default:
         return { start: new Date(currentYear, 0, 1), end: now };
     }
-  };
+  }, [customStartDate, customEndDate]);
 
   // Filter apps by date
   const filteredApps = useMemo(() => {
@@ -117,7 +131,7 @@ export default function PublicDashboard() {
       const appDate = new Date(app.created_at);
       return appDate >= start && appDate <= end;
     });
-  }, [apps, dateFilter, customStartDate, customEndDate]);
+  }, [apps, dateFilter, getDateRange]);
 
   // Calculate statistics using filtered apps
   const total = filteredApps.length;
@@ -131,15 +145,28 @@ export default function PublicDashboard() {
   const fssActive = filteredApps.filter(a => a.fss_user === true && a.status === 'approved').length;
   const fssInactive = filteredApps.filter(a => a.status === 'approved' && a.fss_user !== true).length;
   
+  // Channel statistics (ESP vs DSF)
+  const espTotal = filteredApps.filter(a => a.channel === 'ESP' || !a.channel).length;
+  const espApproved = filteredApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+  const dsfTotal = filteredApps.filter(a => a.channel === 'DSF').length;
+  const dsfApproved = filteredApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+  const tlCount = teamLeaders.length;
+  
   const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
   const rejectionRate = total > 0 ? Math.round((rejected / total) * 100) : 0;
 
   // Territory data with performance metrics
   const territoryData: TerritoryData[] = territories
     .map((t) => {
-      const actual = filteredApps.filter(a => a.territory_id === t.id && a.status === 'approved').length;
+      const territoryApps = filteredApps.filter(a => a.territory_id === t.id);
+      const actual = territoryApps.filter(a => a.status === 'approved').length;
       const target = t.monthly_target || 0;
       const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
+      
+      // Channel breakdown
+      const espCount = territoryApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+      const dsfCount = territoryApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+      const fssCount = territoryApps.filter(a => a.fss_user === true && a.status === 'approved').length;
       
       return {
         id: t.id,
@@ -149,8 +176,11 @@ export default function PublicDashboard() {
         target,
         actual,
         achievement,
-        pending: filteredApps.filter(a => a.territory_id === t.id && a.status === 'pending').length,
-        total: filteredApps.filter(a => a.territory_id === t.id).length,
+        pending: territoryApps.filter(a => a.status === 'pending').length,
+        total: territoryApps.length,
+        espCount,
+        dsfCount,
+        fssCount,
       };
     })
     .filter(t => t.target > 0 || t.actual > 0 || t.pending > 0);
@@ -158,10 +188,16 @@ export default function PublicDashboard() {
   // Zone-level aggregation
   const zoneData = zones.map((z) => {
     const zoneTerritories = territoryData.filter((t) => t.zoneId === z.id);
+    const zoneApps = filteredApps.filter(a => a.zone_id === z.id);
     const target = zoneTerritories.reduce((s: number, t) => s + t.target, 0);
     const actual = zoneTerritories.reduce((s: number, t) => s + t.actual, 0);
     const pending = zoneTerritories.reduce((s: number, t) => s + t.pending, 0);
     const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
+    
+    // Channel breakdown for zone
+    const espCount = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+    const dsfCount = zoneApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+    const fssCount = zoneApps.filter(a => a.fss_user === true && a.status === 'approved').length;
     
     return {
       id: z.id,
@@ -171,6 +207,9 @@ export default function PublicDashboard() {
       pending,
       achievement,
       territoryCount: zoneTerritories.length,
+      espCount,
+      dsfCount,
+      fssCount,
     };
   });
 
@@ -298,6 +337,40 @@ export default function PublicDashboard() {
           value={fssInactive} 
           icon={UserMinus} 
           color="accent"
+        />
+      </div>
+
+      {/* Channel Stats Cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard 
+          title="ESP Applications" 
+          value={espTotal} 
+          icon={Shield} 
+          color="primary"
+        />
+        <StatCard 
+          title="ESP Approved" 
+          value={espApproved} 
+          icon={CheckCircle} 
+          color="success"
+        />
+        <StatCard 
+          title="DSF Applications" 
+          value={dsfTotal} 
+          icon={FileText} 
+          color="info"
+        />
+        <StatCard 
+          title="DSF Approved" 
+          value={dsfApproved} 
+          icon={CheckCircle} 
+          color="success"
+        />
+        <StatCard 
+          title="Team Leaders" 
+          value={tlCount} 
+          icon={Briefcase} 
+          color="secondary"
         />
       </div>
 
@@ -471,6 +544,24 @@ export default function PublicDashboard() {
                       <div>
                         <p className="text-muted-foreground text-xs">Pending</p>
                         <p className="font-medium">{zone.pending}</p>
+                      </div>
+                    </div>
+                    {/* Channel breakdown */}
+                    <div className="border-t pt-2 mt-2">
+                      <p className="text-xs text-muted-foreground mb-2">Channel Breakdown</p>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded bg-blue-50 p-1.5 text-center">
+                          <p className="text-muted-foreground">ESP</p>
+                          <p className="font-semibold text-blue-600">{zone.espCount}</p>
+                        </div>
+                        <div className="rounded bg-green-50 p-1.5 text-center">
+                          <p className="text-muted-foreground">DSF</p>
+                          <p className="font-semibold text-green-600">{zone.dsfCount}</p>
+                        </div>
+                        <div className="rounded bg-purple-50 p-1.5 text-center">
+                          <p className="text-muted-foreground">FSS</p>
+                          <p className="font-semibold text-purple-600">{zone.fssCount}</p>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -93,6 +93,9 @@ export default function ApplicationForm() {
   const [otherFiles, setOtherFiles] = useState<File[]>([]);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   
+  // Channel selection state
+  const [selectedChannel, setSelectedChannel] = useState<'ESP' | 'DSF' | null>(null);
+  
   // Policy acceptance states
   const [conflictPolicyOpen, setConflictPolicyOpen] = useState(false);
   const [conflictPolicyAccepted, setConflictPolicyAccepted] = useState(false);
@@ -157,6 +160,12 @@ export default function ApplicationForm() {
     
     // Terms Acceptance
     terms_accepted: false,
+    
+    // DSF-specific fields
+    team_leader_id: '',
+    dsf_d_number: '',
+    dsf_fss_user: false,
+    dsf_fss_username: '',  // FSS username input
   });
 
   const signatureRef = useRef<SignatureCanvas>(null);
@@ -178,6 +187,19 @@ export default function ApplicationForm() {
       return data ?? [];
     },
     enabled: true,
+  });
+
+  // Query for team leaders (for DSF channel)
+  const { data: teamLeaders = [] } = useQuery({
+    queryKey: ['team-leaders', form.zone_id, form.territory_id],
+    queryFn: async () => {
+      let q = supabase.from('team_leaders').select('*, zones(name), territories(name)').order('name');
+      if (form.zone_id) q = q.eq('zone_id', form.zone_id);
+      if (form.territory_id) q = q.eq('territory_id', form.territory_id);
+      const { data } = await q;
+      return data ?? [];
+    },
+    enabled: selectedChannel === 'DSF',
   });
 
   const update = (field: string, value: string | boolean) => setForm(f => ({ ...f, [field]: value }));
@@ -259,6 +281,12 @@ export default function ApplicationForm() {
       return; 
     }
 
+    // Validate channel selection
+    if (!selectedChannel) {
+      toast.error('Please select a channel type (ESP or DSF)');
+      return;
+    }
+
     // Validate required fields
     const requiredFields = [
       { field: form.trading_name, message: 'Trading name is required' },
@@ -271,6 +299,14 @@ export default function ApplicationForm() {
       { field: form.terms_accepted, message: 'You must accept the terms and conditions' },
       { field: form.signature_data, message: 'Please provide your signature' },
     ];
+
+    // Add DSF-specific required fields
+    if (selectedChannel === 'DSF') {
+      requiredFields.push(
+        { field: form.team_leader_id, message: 'Team Leader is required for DSF applications' },
+        { field: form.dsf_d_number, message: 'D Number is required for DSF applications' }
+      );
+    }
 
     for (const req of requiredFields) {
       if (!req.field) {
@@ -315,6 +351,14 @@ export default function ApplicationForm() {
         // Location
         zone_id: form.zone_id || null,
         territory_id: form.territory_id || null,
+        
+        // Channel (ESP or DSF)
+        channel: selectedChannel,
+        
+        // DSF-specific fields
+        team_leader_id: selectedChannel === 'DSF' ? form.team_leader_id : null,
+        dsf_d_number: selectedChannel === 'DSF' ? form.dsf_d_number.trim() : null,
+        dsf_fss_user: selectedChannel === 'DSF' ? form.dsf_fss_user : null,
         
         // Channel Types (as array)
         channel_types: channelTypes.length > 0 ? channelTypes : null,
@@ -438,6 +482,58 @@ export default function ApplicationForm() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
+      {/* Channel Selection Dialog - Must select before proceeding */}
+      <Dialog open={selectedChannel === null} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-xl font-display">Select Your Channel Type</DialogTitle>
+            <DialogDescription className="text-base">
+              Please select the channel type you are applying for. This selection is mandatory before proceeding with the application.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 gap-4 py-6">
+            <button
+              type="button"
+              onClick={() => setSelectedChannel('ESP')}
+              className="group relative flex flex-col items-center gap-4 rounded-xl border-2 p-6 hover:border-primary hover:bg-primary/5 transition-all"
+            >
+              <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                <Shield className="h-8 w-8 text-blue-600" />
+              </div>
+              <div className="text-center">
+                <h3 className="font-display font-semibold text-lg">ESP</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  External Sales Partner - Standard channel partner application
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedChannel('DSF')}
+              className="group relative flex flex-col items-center gap-4 rounded-xl border-2 p-6 hover:border-primary hover:bg-primary/5 transition-all"
+            >
+              <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                <FileText className="h-8 w-8 text-green-600" />
+              </div>
+              <div className="text-center">
+                <h3 className="font-display font-semibold text-lg">DSF</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Direct Sales Force - Field sales agent under a Team Leader
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <div className="flex justify-center">
+            <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+              Cancel and Go Back
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-8 w-8">
@@ -451,7 +547,7 @@ export default function ApplicationForm() {
             Sales Channel Partner Application Form
           </h1>
           <p className="text-sm text-muted-foreground">
-            MultiChoice Africa - Complete this form to apply as a sales channel partner
+            MultiChoice Africa - {selectedChannel === 'DSF' ? 'DSF (Direct Sales Force)' : 'ESP (External Sales Partner)'} Application
           </p>
         </div>
       </div>
@@ -473,11 +569,13 @@ export default function ApplicationForm() {
       <div className="rounded-xl border bg-card shadow-card overflow-hidden">
         <div className="bg-muted/50 px-6 py-4 border-b">
           <h2 className="font-display font-semibold text-card-foreground text-lg">
-            {['Business Details', 'Business Representative', 'Location Details', 'Channel & Declaration', 'Signature & Witness'][step]}
+            {selectedChannel === 'DSF' 
+              ? ['DSR Details', 'DSR Representative', 'Location Details', 'Channel & Declaration', 'Signature & Witness'][step]
+              : ['Business Details', 'Business Representative', 'Location Details', 'Channel & Declaration', 'Signature & Witness'][step]}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {step === 0 && "Enter your business information"}
-            {step === 1 && "Details of the business representative"}
+            {step === 0 && (selectedChannel === 'DSF' ? "Enter DSR information" : "Enter your business information")}
+            {step === 1 && (selectedChannel === 'DSF' ? "Details of the DSR representative" : "Details of the business representative")}
             {step === 2 && "Select your region, district and enter ward/street"}
             {step === 3 && "Select sales channel type and complete declaration"}
             {step === 4 && "Sign and witness the application"}
@@ -485,27 +583,29 @@ export default function ApplicationForm() {
         </div>
 
         <div className="p-6 space-y-6 min-h-[500px]">
-          {/* Step 0: Business Details */}
+          {/* Step 0: Business Details / DSR Details */}
           {step === 0 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-primary">BUSINESS DETAILS</h3>
+              <h3 className="text-sm font-semibold text-primary">{selectedChannel === 'DSF' ? 'DSR DETAILS' : 'BUSINESS DETAILS'}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Trading Name *</Label>
+                  <Label>{selectedChannel === 'DSF' ? 'DSR Name *' : 'Trading Name *'}</Label>
                   <Input 
                     value={form.trading_name} 
                     onChange={e => update('trading_name', e.target.value)} 
-                    placeholder="Business trading name"
+                    placeholder={selectedChannel === 'DSF' ? 'DSR name' : 'Business trading name'}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Registration Number</Label>
-                  <Input 
-                    value={form.registration_number} 
-                    onChange={e => update('registration_number', e.target.value)} 
-                    placeholder="Company registration number"
-                  />
-                </div>
+                {selectedChannel !== 'DSF' && (
+                  <div className="space-y-1.5">
+                    <Label>Registration Number</Label>
+                    <Input 
+                      value={form.registration_number} 
+                      onChange={e => update('registration_number', e.target.value)} 
+                      placeholder="Company registration number"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label>Tax ID / VAT Number</Label>
                   <Input 
@@ -561,10 +661,10 @@ export default function ApplicationForm() {
             </div>
           )}
 
-          {/* Step 1: Business Representative */}
+          {/* Step 1: Business Representative / DSR Representative */}
           {step === 1 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-primary">BUSINESS REPRESENTATIVE</h3>
+              <h3 className="text-sm font-semibold text-primary">{selectedChannel === 'DSF' ? 'DSR REPRESENTATIVE' : 'BUSINESS REPRESENTATIVE'}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>Title</Label>
@@ -602,17 +702,19 @@ export default function ApplicationForm() {
                     placeholder="National ID / Passport"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Position in Business</Label>
-                  <Select value={form.rep_position} onValueChange={v => update('rep_position', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
-                    <SelectContent>
-                      {BUSINESS_POSITIONS.map(position => (
-                        <SelectItem key={position} value={position}>{position}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {selectedChannel !== 'DSF' && (
+                  <div className="space-y-1.5">
+                    <Label>Position in Business</Label>
+                    <Select value={form.rep_position} onValueChange={v => update('rep_position', v)}>
+                      <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_POSITIONS.map(position => (
+                          <SelectItem key={position} value={position}>{position}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label>Work Telephone</Label>
                   <Input 
@@ -638,15 +740,17 @@ export default function ApplicationForm() {
                     placeholder="Email address"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Alternative Email</Label>
-                  <Input 
-                    type="email" 
-                    value={form.rep_alternative_email} 
-                    onChange={e => update('rep_alternative_email', e.target.value)} 
-                    placeholder="Alternative email"
-                  />
-                </div>
+                {selectedChannel !== 'DSF' && (
+                  <div className="space-y-1.5">
+                    <Label>Alternative Email</Label>
+                    <Input 
+                      type="email" 
+                      value={form.rep_alternative_email} 
+                      onChange={e => update('rep_alternative_email', e.target.value)} 
+                      placeholder="Alternative email"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1.5 md:col-span-2">
                   <Label>Physical Address</Label>
                   <Textarea 
@@ -767,44 +871,63 @@ export default function ApplicationForm() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-primary mb-3">TYPE OF SALES CHANNEL</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
-                    <Checkbox 
-                      checked={form.channel_type_agent} 
-                      onCheckedChange={v => update('channel_type_agent', v)} 
-                    />
-                    <span className="text-sm">Agent</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
-                    <Checkbox 
-                      checked={form.channel_type_distributor} 
-                      onCheckedChange={v => update('channel_type_distributor', v)} 
-                    />
-                    <span className="text-sm">Distributor</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
-                    <Checkbox 
-                      checked={form.channel_type_sub_distributor} 
-                      onCheckedChange={v => update('channel_type_sub_distributor', v)} 
-                    />
-                    <span className="text-sm">Sub-Distributor</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
-                    <Checkbox 
-                      checked={form.channel_type_retailer} 
-                      onCheckedChange={v => update('channel_type_retailer', v)} 
-                    />
-                    <span className="text-sm">Retailer</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer md:col-span-2">
-                    <Checkbox 
-                      checked={form.channel_type_other} 
-                      onCheckedChange={v => update('channel_type_other', v)} 
-                    />
-                    <span className="text-sm">Other (please specify)</span>
-                  </label>
-                </div>
-                {form.channel_type_other && (
+                {selectedChannel === 'DSF' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_agent} 
+                        onCheckedChange={v => update('channel_type_agent', v)} 
+                      />
+                      <span className="text-sm">DSR</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_distributor} 
+                        onCheckedChange={v => update('channel_type_distributor', v)} 
+                      />
+                      <span className="text-sm">Point DSR</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_agent} 
+                        onCheckedChange={v => update('channel_type_agent', v)} 
+                      />
+                      <span className="text-sm">Agent</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_distributor} 
+                        onCheckedChange={v => update('channel_type_distributor', v)} 
+                      />
+                      <span className="text-sm">Distributor</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_sub_distributor} 
+                        onCheckedChange={v => update('channel_type_sub_distributor', v)} 
+                      />
+                      <span className="text-sm">Sub-Distributor</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer">
+                      <Checkbox 
+                        checked={form.channel_type_retailer} 
+                        onCheckedChange={v => update('channel_type_retailer', v)} 
+                      />
+                      <span className="text-sm">Retailer</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted cursor-pointer md:col-span-2">
+                      <Checkbox 
+                        checked={form.channel_type_other} 
+                        onCheckedChange={v => update('channel_type_other', v)} 
+                      />
+                      <span className="text-sm">Other (please specify)</span>
+                    </label>
+                  </div>
+                )}
+                {form.channel_type_other && selectedChannel !== 'DSF' && (
                   <div className="mt-3">
                     <Input 
                       value={form.channel_type_other_text} 
@@ -814,6 +937,87 @@ export default function ApplicationForm() {
                   </div>
                 )}
               </div>
+
+              {/* DSF-Specific Fields */}
+              {selectedChannel === 'DSF' && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="text-sm font-semibold text-primary mb-3">DSF DETAILS</h3>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      As a Direct Sales Force member, please provide the following additional information:
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label>Team Leader *</Label>
+                        <Select 
+                          value={form.team_leader_id} 
+                          onValueChange={v => update('team_leader_id', v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select your Team Leader" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teamLeaders.length === 0 ? (
+                              <div className="p-2 text-sm text-muted-foreground">
+                                No team leaders available for selected zone/territory
+                              </div>
+                            ) : (
+                              teamLeaders.map((tl) => (
+                                <SelectItem key={tl.id} value={tl.id}>
+                                  {tl.name} {tl.cluster && `(${tl.cluster})`}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Select the Team Leader you will be reporting to
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <Label>D Number *</Label>
+                        <Input 
+                          value={form.dsf_d_number} 
+                          onChange={e => update('dsf_d_number', e.target.value)} 
+                          placeholder="Enter your D Number (e.g., D12345)"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Your unique DSF identifier number
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>FSS User</Label>
+                        <div className="flex items-center space-x-2 p-3 rounded-lg border">
+                          <Checkbox 
+                            id="dsf_fss_user"
+                            checked={form.dsf_fss_user} 
+                            onCheckedChange={v => update('dsf_fss_user', v as boolean)} 
+                          />
+                          <Label htmlFor="dsf_fss_user" className="text-sm font-normal cursor-pointer">
+                            I am registered as an FSS User
+                          </Label>
+                        </div>
+                        {form.dsf_fss_user && (
+                          <div className="mt-2">
+                            <Label>FSS Username *</Label>
+                            <Input 
+                              value={form.dsf_fss_username} 
+                              onChange={e => update('dsf_fss_username', e.target.value)} 
+                              placeholder="Enter your FSS username"
+                            />
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Check if you have access to the Field Sales System and enter your username
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Separator />
 

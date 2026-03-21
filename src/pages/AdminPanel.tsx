@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -178,14 +178,16 @@ export default function AdminPanel() {
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-4">
-        <TabsList className="w-full grid grid-cols-4">
+        <TabsList className="w-full grid grid-cols-5">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="applications">Applications</TabsTrigger>
+          <TabsTrigger value="team-leaders">TL & DSF</TabsTrigger>
           <TabsTrigger value="fss">FSS Users</TabsTrigger>
           <TabsTrigger value="territories">Zones & Territories</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard"><AdminDashboard /></TabsContent>
         <TabsContent value="applications"><ApplicationsList /></TabsContent>
+        <TabsContent value="team-leaders"><TeamLeadersManager /></TabsContent>
         <TabsContent value="fss"><FSSUsersManager /></TabsContent>
         <TabsContent value="territories"><ZonesTerritoriesManager /></TabsContent>
       </Tabs>
@@ -194,10 +196,16 @@ export default function AdminPanel() {
 }
 
 function AdminDashboard() {
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>('mtd');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [channelFilter, setChannelFilter] = useState<string>('all');
+
   const { data: apps = [] } = useQuery({
     queryKey: ['admin-applications'],
     queryFn: async () => {
-      const { data } = await supabase.from('applications').select('status, territory_id, zone_id, created_at').order('created_at', { ascending: false });
+      const { data } = await supabase.from('applications').select('status, territory_id, zone_id, created_at, channel, fss_user').order('created_at', { ascending: false });
       return data ?? [];
     },
   });
@@ -218,44 +226,231 @@ function AdminDashboard() {
     },
   });
 
-  const total = apps.length;
-  const approved = apps.filter(a => a.status === 'approved').length;
-  const rejected = apps.filter(a => a.status === 'rejected').length;
-  const pending = apps.filter(a => a.status === 'pending').length;
-  const inProgress = apps.filter(a => a.status === 'in_progress').length;
+  // Calculate date ranges based on filter
+  const getDateRange = (filter: string): { start: Date; end: Date; monthCount: number } => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    switch (filter) {
+      case 'this_month': {
+        const start = new Date(currentYear, currentMonth, 1);
+        const end = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+        return { start, end, monthCount: 1 };
+      }
+      case 'last_month': {
+        const start = new Date(currentYear, currentMonth - 1, 1);
+        const end = new Date(currentYear, currentMonth, 0, 23, 59, 59);
+        return { start, end, monthCount: 1 };
+      }
+      case 'mtd': {
+        // MTD = from start of year to now (current month count)
+        const start = new Date(currentYear, 0, 1);
+        const end = now;
+        return { start, end, monthCount: currentMonth + 1 };
+      }
+      case 'custom': {
+        if (customStartDate && customEndDate) {
+          const start = new Date(customStartDate);
+          const end = new Date(customEndDate);
+          end.setHours(23, 59, 59);
+          // Calculate months between dates
+          const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+          return { start, end, monthCount: Math.max(1, diffMonths) };
+        }
+        // Default to this month if no custom dates
+        return { start: new Date(currentYear, currentMonth, 1), end: now, monthCount: 1 };
+      }
+      default:
+        return { start: new Date(currentYear, 0, 1), end: now, monthCount: currentMonth + 1 };
+    }
+  };
 
-  // Calculate current month (1-12) for MTD
-  const currentMonth = new Date().getMonth() + 1; // January = 1
+  const { start: filterStart, end: filterEnd, monthCount } = getDateRange(dateFilter);
 
-  // Calculate Year Target, MTD Target, and Gap
-  const totalYearTarget = territories.reduce((s, t) => s + (t.year_target || 0), 0);
-  const totalMtdTarget = Math.round((totalYearTarget / 12) * currentMonth);
-  const totalMtdActual = approved;
-  const totalGap = totalMtdTarget - totalMtdActual;
-
-  // Zone-level performance with MTD
-  const zonePerformance = zones.map((zone) => {
-    const zoneTerritories = territories.filter((t) => t.zone_id === zone.id);
-    const yearTarget = zoneTerritories.reduce((s: number, t) => s + (t.year_target || 0), 0);
-    const mtdTarget = Math.round((yearTarget / 12) * currentMonth);
-    const actual = apps.filter(a => a.zone_id === zone.id && a.status === 'approved').length;
-    const gap = mtdTarget - actual;
-    const pct = mtdTarget > 0 ? Math.round((actual / mtdTarget) * 100) : actual > 0 ? 100 : 0;
-    return { ...zone, yearTarget, mtdTarget, actual, gap, pct, territoryCount: zoneTerritories.length };
+  // Filter apps by date range and channel
+  const filteredApps = apps.filter(app => {
+    const appDate = new Date(app.created_at);
+    const inDateRange = appDate >= filterStart && appDate <= filterEnd;
+    
+    // Channel filter
+    let matchesChannel = true;
+    if (channelFilter === 'esp') {
+      matchesChannel = app.channel === 'ESP' || !app.channel;
+    } else if (channelFilter === 'dsf') {
+      matchesChannel = app.channel === 'DSF';
+    }
+    
+    return inDateRange && matchesChannel;
   });
 
-  // Territory-level performance with MTD
+  const total = filteredApps.length;
+  const approved = filteredApps.filter(a => a.status === 'approved').length;
+  const rejected = filteredApps.filter(a => a.status === 'rejected').length;
+  const pending = filteredApps.filter(a => a.status === 'pending').length;
+  const inProgress = filteredApps.filter(a => a.status === 'in_progress').length;
+  
+  // Channel breakdown from filtered apps
+  const espCount = filteredApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
+  const dsfCount = filteredApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
+  const fssCount = filteredApps.filter(a => a.fss_user === true && a.status === 'approved').length;
+
+  // ============ TARGET CALCULATIONS ============
+  // Year Target = Sum of all territory year targets (12 months total)
+  const totalYearTarget = territories.reduce((s, t) => s + (t.year_target || 0), 0);
+  
+  // Monthly Target = Year Target / 12
+  const monthlyTarget = Math.round(totalYearTarget / 12);
+  
+  // Period Target = Monthly Target × Number of months in filter period
+  // - This Month: monthCount = 1 → Monthly Target × 1
+  // - Last Month: monthCount = 1 → Monthly Target × 1  
+  // - MTD: monthCount = current month number (e.g., March = 3) → Monthly Target × 3
+  // - Custom: monthCount = number of months in date range
+  const periodTarget = monthlyTarget * monthCount;
+  
+  const periodActual = approved;
+  const periodGap = periodTarget - periodActual;
+
+  // ============ ZONE PERFORMANCE ============
+  const zonePerformance = zones.map((zone) => {
+    const zoneTerritories = territories.filter((t) => t.zone_id === zone.id);
+    
+    // Zone Year Target = Sum of territory year targets in this zone
+    const yearTarget = zoneTerritories.reduce((s: number, t) => s + (t.year_target || 0), 0);
+    
+    // Zone Monthly Target = Zone Year Target / 12
+    const zoneMonthlyTarget = Math.round(yearTarget / 12);
+    
+    // Zone Period Target = Zone Monthly Target × monthCount
+    const periodZoneTarget = zoneMonthlyTarget * monthCount;
+    
+    // Actual = Approved apps in this zone within filter period
+    const actual = filteredApps.filter(a => a.zone_id === zone.id && a.status === 'approved').length;
+    const gap = periodZoneTarget - actual;
+    const pct = periodZoneTarget > 0 ? Math.round((actual / periodZoneTarget) * 100) : actual > 0 ? 100 : 0;
+    
+    // Channel breakdown per zone
+    const zoneApps = filteredApps.filter(a => a.zone_id === zone.id && a.status === 'approved');
+    const zoneEsp = zoneApps.filter(a => a.channel === 'ESP' || !a.channel).length;
+    const zoneDsf = zoneApps.filter(a => a.channel === 'DSF').length;
+    const zoneFss = zoneApps.filter(a => a.fss_user === true).length;
+    
+    return { 
+      ...zone, 
+      yearTarget, 
+      monthlyTarget: zoneMonthlyTarget,
+      periodTarget: periodZoneTarget, 
+      actual, 
+      gap, 
+      pct, 
+      territoryCount: zoneTerritories.length, 
+      espCount: zoneEsp, 
+      dsfCount: zoneDsf, 
+      fssCount: zoneFss 
+    };
+  });
+
+  // ============ TERRITORY PERFORMANCE ============
   const territoryPerformance = territories.map((t) => {
+    // Territory Year Target
     const yearTarget = t.year_target || 0;
-    const mtdTarget = Math.round((yearTarget / 12) * currentMonth);
-    const actual = apps.filter(a => a.territory_id === t.id && a.status === 'approved').length;
-    const gap = mtdTarget - actual;
-    const pct = mtdTarget > 0 ? Math.round((actual / mtdTarget) * 100) : actual > 0 ? 100 : 0;
-    return { ...t, yearTarget, mtdTarget, actual, gap, pct };
+    
+    // Territory Monthly Target = Year Target / 12
+    const tMonthlyTarget = Math.round(yearTarget / 12);
+    
+    // Territory Period Target = Monthly Target × monthCount
+    const periodTerritoryTarget = tMonthlyTarget * monthCount;
+    
+    // Actual = Approved apps in this territory within filter period
+    const actual = filteredApps.filter(a => a.territory_id === t.id && a.status === 'approved').length;
+    const gap = periodTerritoryTarget - actual;
+    const pct = periodTerritoryTarget > 0 ? Math.round((actual / periodTerritoryTarget) * 100) : actual > 0 ? 100 : 0;
+    
+    // Channel breakdown per territory
+    const tApps = filteredApps.filter(a => a.territory_id === t.id && a.status === 'approved');
+    const tEsp = tApps.filter(a => a.channel === 'ESP' || !a.channel).length;
+    const tDsf = tApps.filter(a => a.channel === 'DSF').length;
+    const tFss = tApps.filter(a => a.fss_user === true).length;
+    
+    return { 
+      ...t, 
+      yearTarget, 
+      monthlyTarget: tMonthlyTarget,
+      periodTarget: periodTerritoryTarget, 
+      actual, 
+      gap, 
+      pct, 
+      espCount: tEsp, 
+      dsfCount: tDsf, 
+      fssCount: tFss 
+    };
   }).filter(t => t.yearTarget > 0 || t.actual > 0);
+
+  // Get period label for display
+  const getPeriodLabel = () => {
+    switch (dateFilter) {
+      case 'this_month': return 'This Month';
+      case 'last_month': return 'Last Month';
+      case 'mtd': return `MTD (${monthCount} months)`;
+      case 'custom': return customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom';
+      default: return 'Period';
+    }
+  };
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border bg-card shadow-card">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">Period:</Label>
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className="w-[150px]">
+              <Calendar className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="this_month">This Month</SelectItem>
+              <SelectItem value="last_month">Last Month</SelectItem>
+              <SelectItem value="mtd">MTD Target</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2">
+            <Input 
+              type="date" 
+              value={customStartDate} 
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="w-[140px]"
+            />
+            <span className="text-muted-foreground">to</span>
+            <Input 
+              type="date" 
+              value={customEndDate} 
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="w-[140px]"
+            />
+          </div>
+        )}
+        
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">Channel:</Label>
+          <Select value={channelFilter} onValueChange={setChannelFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="All Channels" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Channels</SelectItem>
+              <SelectItem value="esp">ESP Only</SelectItem>
+              <SelectItem value="dsf">DSF Only</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {/* Summary Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard title="Total" value={total} icon={FileText} color="primary" />
@@ -265,39 +460,59 @@ function AdminDashboard() {
         <StatCard title="Rejected" value={rejected} icon={X} color="destructive" />
       </div>
 
-      {/* Year Target Summary */}
+      {/* Channel Breakdown Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard title="ESP Approved" value={espCount} icon={Shield} color="primary" />
+        <StatCard title="DSF Approved" value={dsfCount} icon={FileText} color="secondary" />
+        <StatCard title="FSS Users" value={fssCount} icon={Users} color="success" />
+      </div>
+
+      {/* Target Summary */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" /> Target Summary (MTD - {currentMonth} months)
+            <Target className="h-4 w-4 text-primary" /> Target Summary - {getPeriodLabel()}
+            {channelFilter !== 'all' && <Badge variant="outline" className="ml-2">{channelFilter.toUpperCase()} Only</Badge>}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-3 rounded-lg bg-primary/5">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="text-center p-3 rounded-lg bg-muted/50">
               <p className="text-xs text-muted-foreground">Year Target</p>
-              <p className="text-2xl font-bold text-primary">{totalYearTarget}</p>
+              <p className="text-xl font-bold text-foreground">{totalYearTarget}</p>
+              <p className="text-xs text-muted-foreground">12 months</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Monthly Target</p>
+              <p className="text-xl font-bold text-foreground">{monthlyTarget}</p>
+              <p className="text-xs text-muted-foreground">per month</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-primary/5">
+              <p className="text-xs text-muted-foreground">Period Target</p>
+              <p className="text-xl font-bold text-primary">{periodTarget}</p>
+              <p className="text-xs text-muted-foreground">{monthlyTarget} × {monthCount} month{monthCount > 1 ? 's' : ''}</p>
             </div>
             <div className="text-center p-3 rounded-lg bg-success/5">
-              <p className="text-xs text-muted-foreground">MTD Actual</p>
-              <p className="text-2xl font-bold text-success">{totalMtdActual}</p>
-              <p className="text-xs text-muted-foreground">of {totalMtdTarget} MTD target</p>
+              <p className="text-xs text-muted-foreground">Period Actual</p>
+              <p className="text-xl font-bold text-success">{periodActual}</p>
+              <p className="text-xs text-muted-foreground">{periodTarget > 0 ? Math.round((periodActual / periodTarget) * 100) : 0}% achieved</p>
             </div>
-            <div className={`text-center p-3 rounded-lg ${totalGap > 0 ? 'bg-destructive/5' : 'bg-success/5'}`}>
+            <div className={`text-center p-3 rounded-lg ${periodGap > 0 ? 'bg-destructive/5' : 'bg-success/5'}`}>
               <p className="text-xs text-muted-foreground">Gap</p>
-              <p className={`text-2xl font-bold ${totalGap > 0 ? 'text-destructive' : 'text-success'}`}>
-                {totalGap > 0 ? `-${totalGap}` : `+${Math.abs(totalGap)}`}
+              <p className={`text-xl font-bold ${periodGap > 0 ? 'text-destructive' : 'text-success'}`}>
+                {periodGap > 0 ? `-${periodGap}` : `+${Math.abs(periodGap)}`}
               </p>
-              <p className="text-xs text-muted-foreground">{totalGap > 0 ? 'Behind target' : 'Ahead of target'}</p>
+              <p className="text-xs text-muted-foreground">{periodGap > 0 ? 'Behind target' : 'Ahead of target'}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Zone Performance with Gap */}
+      {/* Zone Performance */}
       <div className="space-y-2">
         <h3 className="font-display font-semibold text-foreground flex items-center gap-2">
-          <Globe className="h-4 w-4 text-primary" /> Zone Performance vs Target
+          <Globe className="h-4 w-4 text-primary" /> Zone Performance - {getPeriodLabel()}
+          {channelFilter !== 'all' && <Badge variant="outline" className="ml-2">{channelFilter.toUpperCase()}</Badge>}
         </h3>
         {zonePerformance.map((zone) => (
           <div key={zone.id} className="rounded-xl border bg-card p-4 shadow-card">
@@ -313,19 +528,20 @@ function AdminDashboard() {
             <div className="h-2 bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(zone.pct, 100)}%` }} />
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>YTD: {zone.yearTarget} • MTD Target: {zone.mtdTarget}</span>
-              <span>Actual: {zone.actual} • {zone.territoryCount} territories</span>
+            <div className="flex flex-wrap justify-between text-xs text-muted-foreground mt-1 gap-1">
+              <span>Year: {zone.yearTarget} • Monthly: {zone.monthlyTarget} • Period ({monthCount}mo): {zone.periodTarget} • Actual: {zone.actual}</span>
+              <span>ESP: {zone.espCount} • DSF: {zone.dsfCount} • FSS: {zone.fssCount}</span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Territory Performance with Gap */}
+      {/* Territory Performance */}
       {territoryPerformance.length > 0 && (
         <div className="space-y-2">
           <h3 className="font-display font-semibold text-foreground flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-secondary" /> Territory Performance vs Target
+            <MapPin className="h-4 w-4 text-secondary" /> Territory Performance - {getPeriodLabel()}
+            {channelFilter !== 'all' && <Badge variant="outline" className="ml-2">{channelFilter.toUpperCase()}</Badge>}
           </h3>
           <div className="rounded-xl border bg-card shadow-card overflow-hidden">
             <Table>
@@ -333,9 +549,13 @@ function AdminDashboard() {
                 <TableRow>
                   <TableHead>Territory</TableHead>
                   <TableHead>Zone</TableHead>
-                  <TableHead className="text-right">Year Target</TableHead>
-                  <TableHead className="text-right">MTD Target</TableHead>
+                  <TableHead className="text-right">Year</TableHead>
+                  <TableHead className="text-right">Monthly</TableHead>
+                  <TableHead className="text-right">Period ({monthCount}mo)</TableHead>
                   <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">ESP</TableHead>
+                  <TableHead className="text-right">DSF</TableHead>
+                  <TableHead className="text-right">FSS</TableHead>
                   <TableHead className="text-right">Gap</TableHead>
                   <TableHead className="text-right">%</TableHead>
                 </TableRow>
@@ -346,8 +566,12 @@ function AdminDashboard() {
                     <TableCell className="font-medium">{t.name}</TableCell>
                     <TableCell>{t.zones?.name || 'N/A'}</TableCell>
                     <TableCell className="text-right">{t.yearTarget}</TableCell>
-                    <TableCell className="text-right">{t.mtdTarget}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{t.monthlyTarget}</TableCell>
+                    <TableCell className="text-right font-medium text-primary">{t.periodTarget}</TableCell>
                     <TableCell className="text-right">{t.actual}</TableCell>
+                    <TableCell className="text-right text-blue-600">{t.espCount}</TableCell>
+                    <TableCell className="text-right text-green-600">{t.dsfCount}</TableCell>
+                    <TableCell className="text-right text-purple-600">{t.fssCount}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant={t.gap > 0 ? 'destructive' : 'default'} className={`text-xs ${t.gap <= 0 ? 'bg-success' : ''}`}>
                         {t.gap > 0 ? `-${t.gap}` : `+${Math.abs(t.gap)}`}
@@ -1338,6 +1562,462 @@ function FSSUsersManager() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Team Leaders & DSF Management Component
+function TeamLeadersManager() {
+  const [search, setSearch] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('all');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showTreeDialog, setShowTreeDialog] = useState(false);
+  const [selectedTL, setSelectedTL] = useState<string | null>(null);
+  const [newTL, setNewTL] = useState({
+    name: '',
+    zone_id: '',
+    territory_id: '',
+    cluster: '',
+    target_dsf_count: 10,
+  });
+
+  const queryClient = useQueryClient();
+
+  const { data: zones = [] } = useQuery({
+    queryKey: ['zones'],
+    queryFn: async () => {
+      const { data } = await supabase.from('zones').select('*').order('name');
+      return data ?? [];
+    },
+  });
+
+  const { data: territories = [] } = useQuery({
+    queryKey: ['territories-by-zone-tl', newTL.zone_id],
+    queryFn: async () => {
+      let q = supabase.from('territories').select('*').order('name');
+      if (newTL.zone_id) q = q.eq('zone_id', newTL.zone_id);
+      const { data } = await q;
+      return data ?? [];
+    },
+    enabled: true,
+  });
+
+  const { data: teamLeaders = [] } = useQuery({
+    queryKey: ['team-leaders'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('team_leaders')
+        .select('*, zones(name), territories(name)')
+        .order('created_at', { ascending: false });
+      return data ?? [];
+    },
+  });
+
+  const { data: dsfRecords = [] } = useQuery({
+    queryKey: ['dsf-records'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('dsf_records')
+        .select('*, team_leaders(name), zones(name), territories(name), applications(trading_name, contact_person_name, contact_person_surname)')
+        .order('created_at', { ascending: false });
+      return data ?? [];
+    },
+  });
+
+  const { data: dsfApplications = [] } = useQuery({
+    queryKey: ['dsf-applications'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('applications')
+        .select('*, zones(name), territories(name), team_leaders:team_leader_id(name)')
+        .eq('channel', 'DSF')
+        .order('created_at', { ascending: false });
+      return data ?? [];
+    },
+  });
+
+  const createTL = useMutation({
+    mutationFn: async (data: typeof newTL) => {
+      const { error } = await supabase.from('team_leaders').insert(data);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-leaders'] });
+      setShowCreateDialog(false);
+      setNewTL({ name: '', zone_id: '', territory_id: '', cluster: '', target_dsf_count: 10 });
+      toast.success('Team Leader created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const deleteTL = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('team_leaders').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-leaders'] });
+      toast.success('Team Leader deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Filter team leaders
+  const filteredTLs = teamLeaders.filter((tl: Record<string, unknown>) => {
+    const matchesSearch = search === '' || 
+      (tl.name as string).toLowerCase().includes(search.toLowerCase()) ||
+      ((tl.cluster as string) || '').toLowerCase().includes(search.toLowerCase());
+    const matchesZone = zoneFilter === 'all' || tl.zone_id === zoneFilter;
+    return matchesSearch && matchesZone;
+  });
+
+  // Get DSFs for a specific team leader
+  const getDSFsForTL = (tlId: string) => {
+    return dsfApplications.filter((app: Record<string, unknown>) => app.team_leader_id === tlId);
+  };
+
+  const selectedTLData = teamLeaders.find((tl: Record<string, unknown>) => tl.id === selectedTL);
+
+  return (
+    <div className="space-y-4">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard title="Team Leaders" value={teamLeaders.length} icon={Users} color="primary" />
+        <StatCard title="DSF Applications" value={dsfApplications.length} icon={FileText} color="info" />
+        <StatCard title="Active DSF Records" value={dsfRecords.length} icon={Shield} color="success" />
+      </div>
+
+      {/* Filters & Actions */}
+      <div className="rounded-xl border bg-card p-4 shadow-card">
+        <div className="flex flex-col md:flex-row justify-between gap-4">
+          <div className="flex flex-1 gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search team leaders..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={zoneFilter} onValueChange={setZoneFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by zone" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Zones</SelectItem>
+                {zones.map((zone: Record<string, unknown>) => (
+                  <SelectItem key={zone.id as string} value={zone.id as string}>
+                    {zone.name as string}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Team Leader
+          </Button>
+        </div>
+      </div>
+
+      {/* Team Leaders Table */}
+      <div className="rounded-xl border bg-card shadow-card overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Zone</TableHead>
+              <TableHead>Territory</TableHead>
+              <TableHead>Cluster</TableHead>
+              <TableHead className="text-center">Target DSF</TableHead>
+              <TableHead className="text-center">Actual DSF</TableHead>
+              <TableHead className="text-center">Gap</TableHead>
+              <TableHead className="text-center">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredTLs.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  No team leaders found
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredTLs.map((tl: Record<string, unknown>) => {
+                const dsfs = getDSFsForTL(tl.id as string);
+                const target = (tl.target_dsf_count as number) || 0;
+                const actual = dsfs.length;
+                const gap = target - actual;
+                return (
+                  <TableRow key={tl.id as string}>
+                    <TableCell className="font-medium">{tl.name as string}</TableCell>
+                    <TableCell>{(tl.zones as Record<string, unknown>)?.name as string || 'N/A'}</TableCell>
+                    <TableCell>{(tl.territories as Record<string, unknown>)?.name as string || 'N/A'}</TableCell>
+                    <TableCell>{(tl.cluster as string) || 'N/A'}</TableCell>
+                    <TableCell className="text-center">{target}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="default" className="bg-success">{actual}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={gap <= 0 ? 'default' : 'destructive'} className={gap <= 0 ? 'bg-success' : ''}>
+                        {gap <= 0 ? '✓' : gap}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedTL(tl.id as string);
+                            setShowTreeDialog(true);
+                          }}
+                        >
+                          View DSFs
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => {
+                            if (confirm('Delete this Team Leader?')) {
+                              deleteTL.mutate(tl.id as string);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* DSF Applications Table */}
+      <div className="rounded-xl border bg-card shadow-card overflow-hidden">
+        <div className="p-4 border-b bg-muted/50">
+          <h3 className="font-semibold">DSF Applications</h3>
+          <p className="text-sm text-muted-foreground">All applications submitted under DSF channel</p>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>D Number</TableHead>
+              <TableHead>Team Leader</TableHead>
+              <TableHead>Zone</TableHead>
+              <TableHead>Territory</TableHead>
+              <TableHead className="text-center">FSS User</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {dsfApplications.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  No DSF applications found
+                </TableCell>
+              </TableRow>
+            ) : (
+              dsfApplications.map((app: Record<string, unknown>) => (
+                <TableRow key={app.id as string}>
+                  <TableCell className="font-medium">
+                    {(app.trading_name as string) || `${app.contact_person_name} ${app.contact_person_surname}`}
+                  </TableCell>
+                  <TableCell>{(app.dsf_d_number as string) || 'N/A'}</TableCell>
+                  <TableCell>{(app.team_leaders as Record<string, unknown>)?.name as string || 'N/A'}</TableCell>
+                  <TableCell>{(app.zones as Record<string, unknown>)?.name as string || 'N/A'}</TableCell>
+                  <TableCell>{(app.territories as Record<string, unknown>)?.name as string || 'N/A'}</TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant={app.dsf_fss_user ? 'default' : 'secondary'} className={app.dsf_fss_user ? 'bg-success' : ''}>
+                      {app.dsf_fss_user ? 'Yes' : 'No'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge 
+                      variant={app.status === 'approved' ? 'default' : app.status === 'rejected' ? 'destructive' : 'secondary'}
+                      className={app.status === 'approved' ? 'bg-success' : ''}
+                    >
+                      {app.status as string}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Create Team Leader Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Team Leader</DialogTitle>
+            <DialogDescription>Enter the details for the new team leader</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label>Name *</Label>
+              <Input
+                value={newTL.name}
+                onChange={(e) => setNewTL({ ...newTL, name: e.target.value })}
+                placeholder="Team Leader Name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Zone *</Label>
+                <Select 
+                  value={newTL.zone_id} 
+                  onValueChange={(v) => setNewTL({ ...newTL, zone_id: v, territory_id: '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select zone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {zones.map((zone: Record<string, unknown>) => (
+                      <SelectItem key={zone.id as string} value={zone.id as string}>
+                        {zone.name as string}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Territory *</Label>
+                <Select 
+                  value={newTL.territory_id} 
+                  onValueChange={(v) => setNewTL({ ...newTL, territory_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select territory" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {territories.map((t: Record<string, unknown>) => (
+                      <SelectItem key={t.id as string} value={t.id as string}>
+                        {t.name as string}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Cluster</Label>
+                <Input
+                  value={newTL.cluster}
+                  onChange={(e) => setNewTL({ ...newTL, cluster: e.target.value })}
+                  placeholder="e.g., Cluster A"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Target DSF Count</Label>
+                <Input
+                  type="number"
+                  value={newTL.target_dsf_count}
+                  onChange={(e) => setNewTL({ ...newTL, target_dsf_count: parseInt(e.target.value) || 0 })}
+                  min={0}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+            <Button 
+              onClick={() => createTL.mutate(newTL)}
+              disabled={!newTL.name || !newTL.zone_id || !newTL.territory_id || createTL.isPending}
+            >
+              {createTL.isPending ? 'Creating...' : 'Create Team Leader'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TL Tree View Dialog */}
+      <Dialog open={showTreeDialog} onOpenChange={setShowTreeDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Team Leader Tree View</DialogTitle>
+            <DialogDescription>
+              {selectedTLData ? `DSF members under ${(selectedTLData as Record<string, unknown>).name}` : 'DSF members'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {selectedTL && (
+              <div className="space-y-4">
+                {/* TL Info Card */}
+                <div className="rounded-lg border p-4 bg-primary/5">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+                      <Users className="h-6 w-6 text-primary-foreground" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">{(selectedTLData as Record<string, unknown>)?.name as string}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {((selectedTLData as Record<string, unknown>)?.zones as Record<string, unknown>)?.name as string} → {((selectedTLData as Record<string, unknown>)?.territories as Record<string, unknown>)?.name as string}
+                        {(selectedTLData as Record<string, unknown>)?.cluster && ` (${(selectedTLData as Record<string, unknown>)?.cluster})`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DSF List */}
+                <div className="space-y-2">
+                  <h5 className="text-sm font-medium text-muted-foreground">
+                    DSF Members ({getDSFsForTL(selectedTL).length} / {(selectedTLData as Record<string, unknown>)?.target_dsf_count || 0})
+                  </h5>
+                  <div className="max-h-[300px] overflow-y-auto space-y-2">
+                    {getDSFsForTL(selectedTL).length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No DSF members assigned yet
+                      </div>
+                    ) : (
+                      getDSFsForTL(selectedTL).map((dsf: Record<string, unknown>) => (
+                        <div key={dsf.id as string} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <span className="font-medium">
+                                {(dsf.trading_name as string) || `${dsf.contact_person_name} ${dsf.contact_person_surname}`}
+                              </span>
+                              <p className="text-xs text-muted-foreground">D#: {(dsf.dsf_d_number as string) || 'N/A'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={dsf.dsf_fss_user ? 'default' : 'secondary'} className={dsf.dsf_fss_user ? 'bg-success text-xs' : 'text-xs'}>
+                              {dsf.dsf_fss_user ? 'FSS' : 'Non-FSS'}
+                            </Badge>
+                            <Badge 
+                              variant={dsf.status === 'approved' ? 'default' : 'secondary'}
+                              className={dsf.status === 'approved' ? 'bg-success text-xs' : 'text-xs'}
+                            >
+                              {dsf.status as string}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTreeDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,18 +1,16 @@
-const CACHE_NAME = 'channel-fss-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
+const CACHE_NAME = 'channel-fss-v2';
+const STATIC_ASSETS = [
   '/favicon.ico',
   '/manifest.json'
 ];
 
-// Install event - cache assets
+// Install event - cache static assets only (NOT index.html)
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache');
-        return cache.addAll(urlsToCache);
+        return cache.addAll(STATIC_ASSETS);
       })
   );
   self.skipWaiting();
@@ -35,38 +33,44 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - network-first for HTML, cache-first for assets
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        if (response) {
-          return response;
-        }
-        
-        return fetch(event.request).then((response) => {
-          // Don't cache non-successful responses or non-GET requests
-          if (!response || response.status !== 200 || response.type !== 'basic' || event.request.method !== 'GET') {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
+  const url = new URL(event.request.url);
+  
+  // Network-first for navigation/HTML requests (always get fresh index.html)
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+  
+  // Cache-first for hashed assets (immutable)
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(event.request)
+        .then((response) => {
+          if (response) return response;
+          
+          return fetch(event.request).then((response) => {
+            if (!response || response.status !== 200) return response;
+            
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseToCache);
             });
-
-          return response;
-        });
-      })
-      .catch(() => {
-        // Return offline page for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      })
+            return response;
+          });
+        })
+    );
+    return;
+  }
+  
+  // Network-first for everything else
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => response)
+      .catch(() => caches.match(event.request))
   );
 });

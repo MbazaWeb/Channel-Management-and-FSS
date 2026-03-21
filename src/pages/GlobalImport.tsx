@@ -344,6 +344,7 @@ export default function GlobalImport() {
           fss_user: row.fss_user?.toLowerCase() === 'true',
           dsf_fss_user: row.fss_user?.toLowerCase() === 'true',
           dsf_d_number: row.dsf_d_number || null,
+          source: 'import', // Mark as imported/migrated - does not count toward recruitment targets
         };
 
         const { error } = await supabase.from('applications').insert(insertData);

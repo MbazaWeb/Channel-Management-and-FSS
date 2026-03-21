@@ -51,7 +51,7 @@ export default function PublicDashboard() {
     queryFn: async () => {
       const { data } = await supabase
         .from('applications')
-        .select('status, territory_id, zone_id, created_at, fss_user, channel, is_active')
+        .select('status, territory_id, zone_id, created_at, fss_user, channel, is_active, source')
         .order('created_at', { ascending: false });
       return data ?? [];
     },
@@ -169,11 +169,16 @@ export default function PublicDashboard() {
   const territoryData: TerritoryData[] = territories
     .map((t) => {
       const territoryApps = filteredApps.filter(a => a.territory_id === t.id);
-      const actual = territoryApps.filter(a => a.status === 'approved').length;
+      // NEW RECRUITMENTS ONLY for target achievement (source = 'application' or not set)
+      const newRecruitments = territoryApps.filter(a => a.status === 'approved' && (a.source === 'application' || !a.source));
+      const actual = newRecruitments.length;
       const target = t.monthly_target || 0;
       const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
       
-      // Channel breakdown
+      // Total approved (including imports) for base count
+      const totalApproved = territoryApps.filter(a => a.status === 'approved').length;
+      
+      // Channel breakdown (total base including imports)
       const espCount = territoryApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
       const espActive = territoryApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.is_active).length;
       const dsfCount = territoryApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;

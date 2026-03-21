@@ -87,6 +87,7 @@ export type Database = {
           reviewed_by: string | null
           signature_text: string | null
           signed_at_location: string | null
+          source: string
           status: string
           submitted_by: string | null
           team_leader_id: string | null
@@ -134,6 +135,7 @@ export type Database = {
           reviewed_by?: string | null
           signature_text?: string | null
           signed_at_location?: string | null
+          source?: string
           status?: string
           submitted_by?: string | null
           team_leader_id?: string | null
@@ -181,6 +183,7 @@ export type Database = {
           reviewed_by?: string | null
           signature_text?: string | null
           signed_at_location?: string | null
+          source?: string
           status?: string
           submitted_by?: string | null
           team_leader_id?: string | null

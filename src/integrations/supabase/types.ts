@@ -475,18 +475,24 @@ export type Database = {
       zones: {
         Row: {
           created_at: string
+          dsf_target: number
+          esp_target: number
           id: string
           name: string
           updated_at: string
         }
         Insert: {
           created_at?: string
+          dsf_target?: number
+          esp_target?: number
           id?: string
           name: string
           updated_at?: string
         }
         Update: {
           created_at?: string
+          dsf_target?: number
+          esp_target?: number
           id?: string
           name?: string
           updated_at?: string

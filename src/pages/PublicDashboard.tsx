@@ -210,12 +210,25 @@ export default function PublicDashboard() {
   const zoneData = zones.map((z) => {
     const zoneTerritories = territoryData.filter((t) => t.zoneId === z.id);
     const zoneApps = filteredApps.filter(a => a.zone_id === z.id);
-    const target = zoneTerritories.reduce((s: number, t) => s + t.target, 0);
-    const actual = zoneTerritories.reduce((s: number, t) => s + t.actual, 0);
-    const pending = zoneTerritories.reduce((s: number, t) => s + t.pending, 0);
-    const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
     
-    // Channel breakdown for zone
+    // NEW RECRUITMENTS ONLY for target achievement
+    const espNewRecruitments = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved' && (a.source === 'application' || !a.source)).length;
+    const dsfNewRecruitments = zoneApps.filter(a => a.channel === 'DSF' && a.status === 'approved' && (a.source === 'application' || !a.source)).length;
+    
+    // Regional targets from zone
+    const espTarget = z.esp_target || 0;
+    const dsfTarget = z.dsf_target || 0;
+    const totalTarget = espTarget + dsfTarget;
+    const totalActual = espNewRecruitments + dsfNewRecruitments;
+    
+    // Achievements
+    const espAchievement = espTarget > 0 ? Math.round((espNewRecruitments / espTarget) * 100) : espNewRecruitments > 0 ? 100 : 0;
+    const dsfAchievement = dsfTarget > 0 ? Math.round((dsfNewRecruitments / dsfTarget) * 100) : dsfNewRecruitments > 0 ? 100 : 0;
+    const totalAchievement = totalTarget > 0 ? Math.round((totalActual / totalTarget) * 100) : totalActual > 0 ? 100 : 0;
+    
+    const pending = zoneApps.filter(a => a.status === 'pending').length;
+    
+    // Total base (including imports)
     const espCount = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.status === 'approved').length;
     const espActive = zoneApps.filter(a => (a.channel === 'ESP' || !a.channel) && a.is_active).length;
     const dsfCount = zoneApps.filter(a => a.channel === 'DSF' && a.status === 'approved').length;
@@ -226,10 +239,16 @@ export default function PublicDashboard() {
     return {
       id: z.id,
       name: z.name,
-      target,
-      actual,
+      espTarget,
+      dsfTarget,
+      totalTarget,
+      espActual: espNewRecruitments,
+      dsfActual: dsfNewRecruitments,
+      totalActual,
+      espAchievement,
+      dsfAchievement,
+      totalAchievement,
       pending,
-      achievement,
       territoryCount: zoneTerritories.length,
       espCount,
       espActive,
@@ -561,30 +580,43 @@ export default function PublicDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <div>
+                    {/* ESP Target Achievement */}
+                    <div className="rounded bg-blue-50 dark:bg-blue-950/30 p-2">
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="text-muted-foreground">Achievement</span>
-                        <span className="font-medium">{zone.achievement}%</span>
+                        <span className="text-muted-foreground font-medium">ESP Target</span>
+                        <span className="font-medium text-blue-600">{zone.espActual}/{zone.espTarget} ({zone.espAchievement}%)</span>
                       </div>
-                      <Progress value={Math.min(zone.achievement, 100)} className="h-2" />
+                      <Progress value={Math.min(zone.espAchievement, 100)} className="h-2 bg-blue-100" />
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">Target</p>
-                        <p className="font-medium">{zone.target}</p>
+                    {/* DSF Target Achievement */}
+                    <div className="rounded bg-purple-50 dark:bg-purple-950/30 p-2">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-muted-foreground font-medium">DSF Target</span>
+                        <span className="font-medium text-purple-600">{zone.dsfActual}/{zone.dsfTarget} ({zone.dsfAchievement}%)</span>
                       </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Actual</p>
-                        <p className="font-medium">{zone.actual}</p>
+                      <Progress value={Math.min(zone.dsfAchievement, 100)} className="h-2 bg-purple-100" />
+                    </div>
+                    {/* Overall Achievement */}
+                    <div className="rounded bg-gray-50 dark:bg-gray-950/30 p-2">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-muted-foreground font-medium">Overall</span>
+                        <span className="font-medium">{zone.totalActual}/{zone.totalTarget} ({zone.totalAchievement}%)</span>
                       </div>
+                      <Progress value={Math.min(zone.totalAchievement, 100)} className="h-2" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-muted-foreground text-xs">Pending</p>
                         <p className="font-medium">{zone.pending}</p>
                       </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">FSS Collected</p>
+                        <p className="font-medium">{zone.fssCount}</p>
+                      </div>
                     </div>
                     {/* Channel breakdown */}
                     <div className="border-t pt-2 mt-2">
-                      <p className="text-xs text-muted-foreground mb-2">Channel Breakdown (Active / Total)</p>
+                      <p className="text-xs text-muted-foreground mb-2">Active Status (Active / Total)</p>
                       <div className="grid grid-cols-3 gap-2 text-xs">
                         <div className="rounded bg-blue-50 dark:bg-blue-950/30 p-1.5 text-center">
                           <p className="text-muted-foreground">ESP</p>
@@ -597,9 +629,9 @@ export default function PublicDashboard() {
                           <p className="text-xs text-muted-foreground">{zone.dsfCount > 0 ? Math.round((zone.dsfActive / zone.dsfCount) * 100) : 0}%</p>
                         </div>
                         <div className="rounded bg-green-50 dark:bg-green-950/30 p-1.5 text-center">
-                          <p className="text-muted-foreground">Active</p>
+                          <p className="text-muted-foreground">Total</p>
                           <p className="font-semibold text-green-600">{zone.activeCount}</p>
-                          <p className="text-xs text-muted-foreground">Total</p>
+                          <p className="text-xs text-muted-foreground">Active</p>
                         </div>
                       </div>
                     </div>

@@ -1028,15 +1028,23 @@ function ApplicationDetailDialog({ app, onClose }: { app: Application; onClose: 
 function ZonesTerritoriesManager() {
   const queryClient = useQueryClient();
   const [zoneName, setZoneName] = useState('');
+  const [zoneEspTarget, setZoneEspTarget] = useState('');
+  const [zoneDsfTarget, setZoneDsfTarget] = useState('');
   const [territoryName, setTerritoryName] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState('');
   const [yearTarget, setYearTarget] = useState('');
   
-  // Edit state
+  // Edit state for territory
   const [editingTerritory, setEditingTerritory] = useState<Territory | null>(null);
   const [editName, setEditName] = useState('');
   const [editZoneId, setEditZoneId] = useState('');
   const [editYearTarget, setEditYearTarget] = useState('');
+  
+  // Edit state for zone
+  const [editingZone, setEditingZone] = useState<string | null>(null);
+  const [editZoneName, setEditZoneName] = useState('');
+  const [editZoneEspTarget, setEditZoneEspTarget] = useState('');
+  const [editZoneDsfTarget, setEditZoneDsfTarget] = useState('');
 
   // Calculate monthly from year target
   const calculatedMonthly = yearTarget ? Math.round(parseInt(yearTarget) / 12) : 0;
@@ -1061,13 +1069,37 @@ function ZonesTerritoriesManager() {
   const addZone = useMutation({
     mutationFn: async () => {
       if (!zoneName.trim()) throw new Error('Name required');
-      const { error } = await supabase.from('zones').insert({ name: zoneName.trim() });
+      const { error } = await supabase.from('zones').insert({ 
+        name: zoneName.trim(),
+        esp_target: parseInt(zoneEspTarget) || 0,
+        dsf_target: parseInt(zoneDsfTarget) || 0
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
       setZoneName('');
+      setZoneEspTarget('');
+      setZoneDsfTarget('');
       toast.success('Zone created');
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateZone = useMutation({
+    mutationFn: async () => {
+      if (!editingZone || !editZoneName.trim()) throw new Error('Name required');
+      const { error } = await supabase.from('zones').update({ 
+        name: editZoneName.trim(),
+        esp_target: parseInt(editZoneEspTarget) || 0,
+        dsf_target: parseInt(editZoneDsfTarget) || 0
+      }).eq('id', editingZone);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['zones'] });
+      setEditingZone(null);
+      toast.success('Zone updated');
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1145,12 +1177,14 @@ function ZonesTerritoriesManager() {
         <h3 className="font-display font-semibold text-card-foreground flex items-center gap-2">
           <Globe className="h-4 w-4 text-primary" /> New Zone
         </h3>
-        <div className="flex gap-2">
-          <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Zone name" className="flex-1" />
-          <Button onClick={() => addZone.mutate()} disabled={addZone.isPending} size="sm">
-            <Plus className="h-4 w-4" />
-          </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Zone name" className="sm:col-span-2" />
+          <Input type="number" value={zoneEspTarget} onChange={e => setZoneEspTarget(e.target.value)} placeholder="ESP Target" />
+          <Input type="number" value={zoneDsfTarget} onChange={e => setZoneDsfTarget(e.target.value)} placeholder="DSF Target" />
         </div>
+        <Button onClick={() => addZone.mutate()} disabled={addZone.isPending} size="sm">
+          <Plus className="h-4 w-4 mr-1" /> Add Zone
+        </Button>
       </div>
 
       {/* Add Territory */}
@@ -1193,12 +1227,43 @@ function ZonesTerritoriesManager() {
         <h3 className="font-display font-semibold text-foreground">All Zones & Territories</h3>
         {zones.map((zone) => {
           const zoneTerritories = territories.filter((t) => t.zone_id === zone.id);
+          const isEditing = editingZone === zone.id;
           return (
             <div key={zone.id} className="rounded-xl border bg-card shadow-card overflow-hidden">
-              <div className="bg-primary/5 px-4 py-3 flex items-center gap-2">
-                <Globe className="h-4 w-4 text-primary" />
-                <span className="font-medium text-card-foreground">{zone.name}</span>
-                <Badge variant="secondary" className="ml-auto text-xs">{zoneTerritories.length} territories</Badge>
+              <div className="bg-primary/5 px-4 py-3">
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <Input value={editZoneName} onChange={e => setEditZoneName(e.target.value)} placeholder="Zone name" className="sm:col-span-2" />
+                      <Input type="number" value={editZoneEspTarget} onChange={e => setEditZoneEspTarget(e.target.value)} placeholder="ESP Target" />
+                      <Input type="number" value={editZoneDsfTarget} onChange={e => setEditZoneDsfTarget(e.target.value)} placeholder="DSF Target" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => updateZone.mutate()} disabled={updateZone.isPending}>
+                        <Check className="h-3 w-3 mr-1" /> Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingZone(null)}>
+                        <X className="h-3 w-3 mr-1" /> Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Globe className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-card-foreground">{zone.name}</span>
+                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">ESP: {zone.esp_target || 0}</Badge>
+                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">DSF: {zone.dsf_target || 0}</Badge>
+                    <Badge variant="secondary" className="text-xs ml-auto">{zoneTerritories.length} territories</Badge>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
+                      setEditingZone(zone.id);
+                      setEditZoneName(zone.name);
+                      setEditZoneEspTarget(String(zone.esp_target || 0));
+                      setEditZoneDsfTarget(String(zone.dsf_target || 0));
+                    }}>
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
               {zoneTerritories.length > 0 && (
                 <div className="divide-y">

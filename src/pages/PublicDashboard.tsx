@@ -33,6 +33,12 @@ interface TerritoryData {
   target: number;
   actual: number;
   achievement: number;
+  espTarget: number;
+  dsfTarget: number;
+  espActual: number;
+  dsfActual: number;
+  espAchievement: number;
+  dsfAchievement: number;
   pending: number;
   total: number;
   espCount: number;
@@ -171,9 +177,19 @@ export default function PublicDashboard() {
       const territoryApps = filteredApps.filter(a => a.territory_id === t.id);
       // NEW RECRUITMENTS ONLY for target achievement (source = 'application' or not set)
       const newRecruitments = territoryApps.filter(a => a.status === 'approved' && (a.source === 'application' || !a.source));
+      
+      // ESP/DSF new recruitments for separate target tracking
+      const espNewRecruits = newRecruitments.filter(a => a.channel === 'ESP' || !a.channel).length;
+      const dsfNewRecruits = newRecruitments.filter(a => a.channel === 'DSF').length;
+      
       const actual = newRecruitments.length;
       const target = t.monthly_target || 0;
+      const espTarget = t.esp_monthly_target || 0;
+      const dsfTarget = t.dsf_monthly_target || 0;
+      
       const achievement = target > 0 ? Math.round((actual / target) * 100) : actual > 0 ? 100 : 0;
+      const espAchievement = espTarget > 0 ? Math.round((espNewRecruits / espTarget) * 100) : espNewRecruits > 0 ? 100 : 0;
+      const dsfAchievement = dsfTarget > 0 ? Math.round((dsfNewRecruits / dsfTarget) * 100) : dsfNewRecruits > 0 ? 100 : 0;
       
       // Total approved (including imports) for base count
       const totalApproved = territoryApps.filter(a => a.status === 'approved').length;
@@ -194,6 +210,12 @@ export default function PublicDashboard() {
         target,
         actual,
         achievement,
+        espTarget,
+        dsfTarget,
+        espActual: espNewRecruits,
+        dsfActual: dsfNewRecruits,
+        espAchievement,
+        dsfAchievement,
         pending: territoryApps.filter(a => a.status === 'pending').length,
         total: territoryApps.length,
         espCount,
@@ -204,7 +226,7 @@ export default function PublicDashboard() {
         activeCount,
       };
     })
-    .filter(t => t.target > 0 || t.actual > 0 || t.pending > 0);
+    .filter(t => t.target > 0 || t.espTarget > 0 || t.dsfTarget > 0 || t.actual > 0 || t.pending > 0);
 
   // Zone-level aggregation
   const zoneData = zones.map((z) => {
@@ -555,6 +577,25 @@ export default function PublicDashboard() {
                           </div>
                         </div>
                         <Progress value={Math.min(t.achievement, 100)} className="h-1.5" />
+                        {/* ESP/DSF Target Progress */}
+                        {(t.espTarget > 0 || t.dsfTarget > 0) && (
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div className="rounded bg-blue-50 dark:bg-blue-950/30 p-1.5">
+                              <div className="flex justify-between text-xs mb-0.5">
+                                <span className="text-blue-600 font-medium">ESP</span>
+                                <span className="text-muted-foreground">{t.espActual}/{t.espTarget} ({t.espAchievement}%)</span>
+                              </div>
+                              <Progress value={Math.min(t.espAchievement, 100)} className="h-1 bg-blue-100" />
+                            </div>
+                            <div className="rounded bg-purple-50 dark:bg-purple-950/30 p-1.5">
+                              <div className="flex justify-between text-xs mb-0.5">
+                                <span className="text-purple-600 font-medium">DSF</span>
+                                <span className="text-muted-foreground">{t.dsfActual}/{t.dsfTarget} ({t.dsfAchievement}%)</span>
+                              </div>
+                              <Progress value={Math.min(t.dsfAchievement, 100)} className="h-1 bg-purple-100" />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

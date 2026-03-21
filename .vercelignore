@@ -4,8 +4,6 @@ node_modules/
 # Development
 .git/
 .gitignore
-*.md
-!README.md
 
 # Tests
 *.test.ts
@@ -23,7 +21,6 @@ eslint.config.js
 vitest.config.ts
 playwright.config.ts
 playwright-fixture.ts
-tsconfig.node.json
 
 # IDE
 .vscode/
